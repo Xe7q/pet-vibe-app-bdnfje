@@ -2,7 +2,7 @@
   "expo": {
     "name": "PawPaw",
     "slug": "pet-vibe-app-bdnfje",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-uic.png",
     "userInterfaceStyle": "automatic",
@@ -25,7 +25,8 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.PawPaw.PawPaw"
+      "package": "com.PawPaw.PawPaw",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/images/final_quest_240x240.png",
