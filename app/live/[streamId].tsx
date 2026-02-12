@@ -12,7 +12,6 @@ import {
   Modal,
   ActivityIndicator,
   Dimensions,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -67,6 +66,14 @@ export default function LiveStreamScreen() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [showEndConfirmModal, setShowEndConfirmModal] = useState(false);
+  const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
+  const [successModal, setSuccessModal] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
   
   const scrollViewRef = useRef<ScrollView>(null);
   const cameraRef = useRef<CameraView>(null);
@@ -77,18 +84,29 @@ export default function LiveStreamScreen() {
       const data = await apiGet(`/api/live/${streamId}`);
       setStream(data);
       console.log('[LiveStream] Stream loaded:', data);
+      console.log('[LiveStream] User ID:', user?.id, 'Owner ID:', data.ownerId);
       
-      // If user is the owner, activate camera
+      // If user is the owner, request camera permission and activate camera
       if (user?.id === data.ownerId) {
-        console.log('[LiveStream] User is stream owner, activating camera');
-        setIsCameraActive(true);
+        console.log('[LiveStream] User is stream owner, requesting camera permission');
+        if (permission?.granted) {
+          console.log('[LiveStream] Camera permission already granted, activating camera');
+          setIsCameraActive(true);
+        } else {
+          console.log('[LiveStream] Requesting camera permission');
+          requestCameraPermission();
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[LiveStream] Failed to load stream:', error);
+      setErrorModal({
+        visible: true,
+        message: error?.message || 'Failed to load stream. Please try again.',
+      });
     } finally {
       setLoading(false);
     }
-  }, [streamId, user?.id]);
+  }, [streamId, user?.id, permission]);
 
   const joinStream = useCallback(async () => {
     try {
@@ -134,10 +152,19 @@ export default function LiveStreamScreen() {
     }, 5000);
 
     return () => {
+      console.log('[LiveStream] Component unmounting, cleaning up');
       clearInterval(interval);
       leaveStream();
+      
+      // If user is the owner and stream is still active, end it
+      if (stream && user?.id === stream.ownerId && isCameraActive) {
+        console.log('[LiveStream] Owner leaving, ending stream');
+        authenticatedPost(`/api/live/end/${streamId}`, {}).catch(err => {
+          console.error('[LiveStream] Failed to end stream on unmount:', err);
+        });
+      }
     };
-  }, [streamId, loadStreamData, joinStream, leaveStream]);
+  }, [streamId, loadStreamData, joinStream, leaveStream, stream, user?.id, isCameraActive]);
 
   const loadBalance = async () => {
     try {
@@ -152,7 +179,10 @@ export default function LiveStreamScreen() {
     if (!stream || !user) return;
     
     if (balance < cost) {
-      Alert.alert('Insufficient Balance', 'You do not have enough Kibble to send this gift.');
+      setErrorModal({
+        visible: true,
+        message: 'You do not have enough Kibble to send this gift.',
+      });
       return;
     }
 
@@ -171,12 +201,17 @@ export default function LiveStreamScreen() {
       setBalance(prev => prev - cost);
       
       // Show success message
-      Alert.alert('Gift Sent!', `🎉 You sent a ${giftType}! 🎉`);
-      
       setShowGiftModal(false);
-    } catch (error) {
+      setSuccessModal({
+        visible: true,
+        message: `🎉 You sent a ${giftType}! 🎉`,
+      });
+    } catch (error: any) {
       console.error('[LiveStream] Failed to send gift:', error);
-      Alert.alert('Error', 'Failed to send gift. Please try again.');
+      setErrorModal({
+        visible: true,
+        message: error?.message || 'Failed to send gift. Please try again.',
+      });
     } finally {
       setSendingGift(false);
     }
@@ -212,14 +247,27 @@ export default function LiveStreamScreen() {
     setShowEndConfirmModal(false);
     setEndingStream(true);
     try {
-      console.log('[LiveStream] Ending stream');
-      await authenticatedPost(`/api/live/end/${streamId}`, {});
+      console.log('[LiveStream] Ending stream, streamId:', streamId);
+      const response = await authenticatedPost(`/api/live/end/${streamId}`, {});
+      console.log('[LiveStream] Stream ended successfully:', response);
       
-      Alert.alert('Stream Ended', 'Your live stream has ended successfully!');
-      router.back();
-    } catch (error) {
+      // Show success and navigate back
+      setSuccessModal({
+        visible: true,
+        message: 'Your live stream has ended successfully!',
+      });
+      
+      // Navigate back after a short delay
+      setTimeout(() => {
+        router.back();
+      }, 1500);
+    } catch (error: any) {
       console.error('[LiveStream] Failed to end stream:', error);
-      Alert.alert('Error', 'Failed to end stream. Please try again.');
+      const errorMessage = error?.message || 'Failed to end stream. Please try again.';
+      setErrorModal({
+        visible: true,
+        message: errorMessage,
+      });
       setEndingStream(false);
     }
   };
@@ -228,20 +276,34 @@ export default function LiveStreamScreen() {
     setCameraType(current => (current === 'back' ? 'front' : 'back'));
   };
 
-  const requestCameraPermission = async () => {
-    if (!permission) return;
+  const requestCameraPermission = useCallback(async () => {
+    console.log('[LiveStream] Requesting camera permission, current permission:', permission);
+    
+    if (!permission) {
+      console.log('[LiveStream] Permission object not ready yet');
+      return;
+    }
     
     if (!permission.granted) {
+      console.log('[LiveStream] Permission not granted, requesting...');
       const result = await requestPermission();
+      console.log('[LiveStream] Permission request result:', result);
+      
       if (result.granted) {
+        console.log('[LiveStream] Camera permission granted, activating camera');
         setIsCameraActive(true);
       } else {
-        Alert.alert('Camera Permission', 'Camera permission is required to go live.');
+        console.log('[LiveStream] Camera permission denied');
+        setErrorModal({
+          visible: true,
+          message: 'Camera permission is required to stream. Please enable it in your device settings.',
+        });
       }
     } else {
+      console.log('[LiveStream] Camera permission already granted, activating camera');
       setIsCameraActive(true);
     }
-  };
+  }, [permission, requestPermission]);
 
   if (loading) {
     return (
@@ -508,6 +570,60 @@ export default function LiveStreamScreen() {
                   <Text style={styles.endButtonText}>End Stream</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Error Modal */}
+        <Modal
+          visible={errorModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setErrorModal({ visible: false, message: '' })}
+        >
+          <View style={styles.confirmModalOverlay}>
+            <View style={styles.confirmModal}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle.fill"
+                android_material_icon_name="error"
+                size={48}
+                color="#EF4444"
+              />
+              <Text style={styles.confirmTitle}>Error</Text>
+              <Text style={styles.confirmMessage}>{errorModal.message}</Text>
+              <TouchableOpacity
+                onPress={() => setErrorModal({ visible: false, message: '' })}
+                style={[styles.confirmButton, styles.endButton, { width: '100%' }]}
+              >
+                <Text style={styles.endButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Success Modal */}
+        <Modal
+          visible={successModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSuccessModal({ visible: false, message: '' })}
+        >
+          <View style={styles.confirmModalOverlay}>
+            <View style={styles.confirmModal}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check-circle"
+                size={48}
+                color="#4CAF50"
+              />
+              <Text style={styles.confirmTitle}>Success</Text>
+              <Text style={styles.confirmMessage}>{successModal.message}</Text>
+              <TouchableOpacity
+                onPress={() => setSuccessModal({ visible: false, message: '' })}
+                style={[styles.confirmButton, styles.endButton, { width: '100%', backgroundColor: '#4CAF50' }]}
+              >
+                <Text style={styles.endButtonText}>OK</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>

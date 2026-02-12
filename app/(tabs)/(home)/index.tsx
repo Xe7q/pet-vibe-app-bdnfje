@@ -13,6 +13,7 @@ import {
   Animated,
   PanResponder,
   Platform,
+  Modal,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,6 +51,7 @@ export default function HomeScreen() {
   const [stories, setStories] = useState<StoryItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [matchModal, setMatchModal] = useState(false);
   
   const position = useRef(new Animated.ValueXY()).current;
   const swipeAnimation = useRef<Animated.CompositeAnimation | null>(null);
@@ -75,9 +77,32 @@ export default function HomeScreen() {
   const loadStories = async () => {
     try {
       console.log('[Home] Loading featured pets');
-      const data = await apiGet('/api/featured-pets');
-      setStories(data);
-      console.log('[Home] Loaded featured pets:', data.length);
+      const featuredPets = await apiGet('/api/featured-pets');
+      
+      // If there are live pets, fetch active streams to get streamIds
+      const livePets = featuredPets.filter((pet: StoryItem) => pet.isLive);
+      if (livePets.length > 0) {
+        console.log('[Home] Fetching active streams for live pets');
+        const activeStreams = await apiGet('/api/live/active');
+        
+        // Map streamIds to featured pets
+        const storiesWithStreamIds = featuredPets.map((pet: StoryItem) => {
+          if (pet.isLive) {
+            const stream = activeStreams.find((s: any) => s.pet.id === pet.id);
+            return {
+              ...pet,
+              streamId: stream?.id,
+            };
+          }
+          return pet;
+        });
+        
+        setStories(storiesWithStreamIds);
+        console.log('[Home] Loaded featured pets with stream IDs:', storiesWithStreamIds.length);
+      } else {
+        setStories(featuredPets);
+        console.log('[Home] Loaded featured pets:', featuredPets.length);
+      }
     } catch (error) {
       console.error('[Home] Failed to load featured pets:', error);
     }
@@ -108,7 +133,7 @@ export default function HomeScreen() {
         if (Platform.OS !== 'web') {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
-        alert("Pawsome! It's a Match! 🎉");
+        setMatchModal(true);
       }
 
       // Move to next card
@@ -340,6 +365,37 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Match Modal */}
+      <Modal
+        visible={matchModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMatchModal(false)}
+      >
+        <View style={styles.matchModalOverlay}>
+          <View style={styles.matchModal}>
+            <Text style={styles.matchEmoji}>🎉</Text>
+            <Text style={styles.matchTitle}>Pawsome!</Text>
+            <Text style={styles.matchMessage}>It's a Match!</Text>
+            <TouchableOpacity
+              onPress={() => setMatchModal(false)}
+              style={styles.matchButton}
+            >
+              <Text style={styles.matchButtonText}>Continue Swiping</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setMatchModal(false);
+                router.push('/(tabs)/matches');
+              }}
+              style={[styles.matchButton, styles.matchButtonSecondary]}
+            >
+              <Text style={styles.matchButtonSecondaryText}>View Matches</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -532,5 +588,60 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  matchModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  matchModal: {
+    backgroundColor: colors.background,
+    borderRadius: 24,
+    padding: 32,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  matchEmoji: {
+    fontSize: 80,
+    marginBottom: 16,
+  },
+  matchTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  matchMessage: {
+    fontSize: 20,
+    color: colors.primary,
+    marginBottom: 32,
+    fontWeight: '600',
+  },
+  matchButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  matchButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  matchButtonSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  matchButtonSecondaryText: {
+    color: colors.primary,
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });

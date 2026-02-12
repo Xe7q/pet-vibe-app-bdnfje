@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -33,6 +34,10 @@ export default function StartLiveScreen() {
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
   const [starting, setStarting] = useState(false);
+  const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
 
   useEffect(() => {
     loadPetProfile();
@@ -53,25 +58,34 @@ export default function StartLiveScreen() {
 
   const handleStartLive = async () => {
     if (!pet || !title.trim()) {
-      alert('Please enter a stream title');
+      setErrorModal({
+        visible: true,
+        message: 'Please enter a stream title',
+      });
       return;
     }
 
     setStarting(true);
     try {
-      console.log('[StartLive] Starting live stream');
+      console.log('[StartLive] Starting live stream for pet:', pet.id, 'with title:', title.trim());
       const response = await authenticatedPost('/api/live/start', {
         petId: pet.id,
         title: title.trim(),
       });
       
-      console.log('[StartLive] Live stream started:', response);
+      console.log('[StartLive] Live stream started successfully:', response);
+      console.log('[StartLive] Navigating to stream:', response.streamId);
       
       // Navigate to the live stream
       router.replace(`/live/${response.streamId}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[StartLive] Failed to start live stream:', error);
-      alert('Failed to start live stream. Please try again.');
+      const errorMessage = error?.message || 'Failed to start live stream. Please try again.';
+      console.error('[StartLive] Error message:', errorMessage);
+      setErrorModal({
+        visible: true,
+        message: errorMessage,
+      });
       setStarting(false);
     }
   };
@@ -180,6 +194,33 @@ export default function StartLiveScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Error Modal */}
+      <Modal
+        visible={errorModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorModal({ visible: false, message: '' })}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.errorModal}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="error"
+              size={48}
+              color="#EF4444"
+            />
+            <Text style={styles.errorTitle}>Error</Text>
+            <Text style={styles.errorMessage}>{errorModal.message}</Text>
+            <TouchableOpacity
+              onPress={() => setErrorModal({ visible: false, message: '' })}
+              style={styles.errorButton}
+            >
+              <Text style={styles.errorButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -321,5 +362,47 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorModal: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  errorButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  errorButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
