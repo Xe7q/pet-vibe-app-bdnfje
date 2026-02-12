@@ -135,6 +135,48 @@ export const liveStreams = pgTable(
   ]
 );
 
+// Conversations table
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    matchId: text('match_id').notNull(), // references matches.id
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index('conversations_match_id_idx').on(table.matchId),
+    uniqueIndex('conversations_match_id_unique').on(table.matchId),
+  ]
+);
+
+// Messages table
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    senderId: text('sender_id').notNull(), // references auth user
+    content: text('content'),
+    imageUrl: text('image_url'),
+    isRead: boolean('is_read').default(false).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index('messages_conversation_id_idx').on(table.conversationId),
+    index('messages_sender_id_idx').on(table.senderId),
+    index('messages_created_at_idx').on(table.createdAt),
+  ]
+);
+
 // Relations
 export const petProfilesRelations = relations(petProfiles, ({ many }) => ({
   swipes: many(swipes),
@@ -163,5 +205,19 @@ export const liveStreamsRelations = relations(liveStreams, ({ one }) => ({
   pet: one(petProfiles, {
     fields: [liveStreams.petId],
     references: [petProfiles.id],
+  }),
+}));
+
+export const conversationsRelations = relations(
+  conversations,
+  ({ many }) => ({
+    messages: many(messages),
+  })
+);
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [messages.conversationId],
+    references: [conversations.id],
   }),
 }));

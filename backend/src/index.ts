@@ -8,6 +8,9 @@ import { registerGiftRoutes } from './routes/gifts.js';
 import { registerUploadRoutes } from './routes/upload.js';
 import { registerFeaturedRoutes } from './routes/featured.js';
 import { registerLiveRoutes } from './routes/live.js';
+import { registerChatRoutes } from './routes/chat.js';
+import { registerChatUploadRoutes } from './routes/chat-upload.js';
+import { registerRealtimeChatRoutes } from './routes/realtime-chat.js';
 
 // Combine schemas
 const schema = { ...appSchema, ...authSchema };
@@ -33,6 +36,9 @@ registerGiftRoutes(app);
 registerUploadRoutes(app);
 registerFeaturedRoutes(app);
 registerLiveRoutes(app);
+registerChatRoutes(app);
+registerChatUploadRoutes(app);
+registerRealtimeChatRoutes(app);
 
 await app.run();
 app.logger.info('Application running');
