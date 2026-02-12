@@ -1,5 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import { Stack, useRouter, Redirect } from 'expo-router';
+import { IconSymbol } from '@/components/IconSymbol';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -12,15 +14,14 @@ import {
   PanResponder,
   Platform,
 } from 'react-native';
-import { Stack, useRouter, Redirect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
-import * as Haptics from 'expo-haptics';
 import { apiGet, authenticatedPost } from '@/utils/api';
+import React, { useState, useEffect, useRef } from 'react';
+import * as Haptics from 'expo-haptics';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width - 40;
 const SWIPE_THRESHOLD = 120;
 
 interface PetProfile {
@@ -38,34 +39,97 @@ interface StoryItem {
   name: string;
   photoUrl: string;
   isLive?: boolean;
+  streamId?: string;
 }
 
 export default function HomeScreen() {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
+  
   const [pets, setPets] = useState<PetProfile[]>([]);
+  const [stories, setStories] = useState<StoryItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [stories, setStories] = useState<StoryItem[]>([]);
   
   const position = useRef(new Animated.ValueXY()).current;
-  const rotate = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: ['-10deg', '0deg', '10deg'],
-    extrapolate: 'clamp',
-  });
+  const swipeAnimation = useRef<Animated.CompositeAnimation | null>(null);
 
-  const likeOpacity = position.x.interpolate({
-    inputRange: [0, SCREEN_WIDTH / 4],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
+  useEffect(() => {
+    loadPets();
+    loadStories();
+  }, []);
 
-  const nopeOpacity = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 4, 0],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  const loadPets = async () => {
+    try {
+      console.log('[Home] Loading pets for discovery');
+      const data = await apiGet('/api/pets');
+      setPets(data);
+      console.log('[Home] Loaded pets:', data.length);
+    } catch (error) {
+      console.error('[Home] Failed to load pets:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStories = async () => {
+    try {
+      console.log('[Home] Loading featured pets');
+      const data = await apiGet('/api/featured-pets');
+      setStories(data);
+      console.log('[Home] Loaded featured pets:', data.length);
+    } catch (error) {
+      console.error('[Home] Failed to load featured pets:', error);
+    }
+  };
+
+  const handleSwipe = async (swipeType: 'like' | 'pass') => {
+    if (currentIndex >= pets.length) return;
+
+    const currentPet = pets[currentIndex];
+    
+    try {
+      console.log(`[Home] Swiping ${swipeType} on pet:`, currentPet.id);
+      
+      // Trigger haptic feedback
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+
+      // Send swipe to backend
+      const response = await authenticatedPost('/api/swipes', {
+        swipedPetId: currentPet.id,
+        swipeType,
+      });
+
+      // Check for match
+      if (response.match) {
+        console.log('[Home] Match detected!');
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        alert("Pawsome! It's a Match! 🎉");
+      }
+
+      // Move to next card
+      setCurrentIndex(prev => prev + 1);
+      position.setValue({ x: 0, y: 0 });
+    } catch (error) {
+      console.error('[Home] Failed to swipe:', error);
+    }
+  };
+
+  const handleButtonPress = (swipeType: 'like' | 'pass') => {
+    const toValue = swipeType === 'like' ? CARD_WIDTH * 2 : -CARD_WIDTH * 2;
+    
+    Animated.timing(position, {
+      toValue: { x: toValue, y: 0 },
+      duration: 250,
+      useNativeDriver: false,
+    }).start(() => {
+      handleSwipe(swipeType);
+    });
+  };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -75,10 +139,19 @@ export default function HomeScreen() {
       },
       onPanResponderRelease: (_, gesture) => {
         if (gesture.dx > SWIPE_THRESHOLD) {
-          handleSwipe('like');
+          // Swipe right (like)
+          Animated.spring(position, {
+            toValue: { x: CARD_WIDTH * 2, y: gesture.dy },
+            useNativeDriver: false,
+          }).start(() => handleSwipe('like'));
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
-          handleSwipe('pass');
+          // Swipe left (pass)
+          Animated.spring(position, {
+            toValue: { x: -CARD_WIDTH * 2, y: gesture.dy },
+            useNativeDriver: false,
+          }).start(() => handleSwipe('pass'));
         } else {
+          // Return to center
           Animated.spring(position, {
             toValue: { x: 0, y: 0 },
             useNativeDriver: false,
@@ -88,237 +161,95 @@ export default function HomeScreen() {
     })
   ).current;
 
-  useEffect(() => {
-    console.log('HomeScreen: Component mounted, user:', user?.id);
-    loadPets();
-    loadStories();
-  }, []);
-
-  const loadPets = async () => {
-    console.log('HomeScreen: Loading pets from discovery feed');
-    try {
-      setLoading(true);
-      const response = await apiGet<PetProfile[]>('/api/pets');
-      setPets(response);
-      console.log('HomeScreen: Loaded', response.length, 'pets');
-    } catch (error) {
-      console.error('HomeScreen: Error loading pets:', error);
-      // Fallback to mock data if API fails
-      const mockPets: PetProfile[] = [
-        {
-          id: '1',
-          name: 'Buddy',
-          breed: 'Golden Retriever',
-          age: 3,
-          photoUrl: 'https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=800',
-          likesCount: 245,
-        },
-        {
-          id: '2',
-          name: 'Luna',
-          breed: 'Siamese Cat',
-          age: 2,
-          photoUrl: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800',
-          likesCount: 189,
-        },
-        {
-          id: '3',
-          name: 'Max',
-          breed: 'Corgi',
-          age: 4,
-          photoUrl: 'https://images.unsplash.com/photo-1612536981610-2e8a36a0e5f1?w=800',
-          likesCount: 312,
-        },
-      ];
-      setPets(mockPets);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadStories = async () => {
-    console.log('HomeScreen: Loading featured pet stories');
-    // TODO: Backend Integration - GET /api/stories for featured pets
-    const mockStories: StoryItem[] = [
-      {
-        id: 'live',
-        name: 'LIVE NOW',
-        photoUrl: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=200',
-        isLive: true,
-      },
-      {
-        id: '1',
-        name: 'Buddy',
-        photoUrl: 'https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=200',
-      },
-      {
-        id: '2',
-        name: 'Luna',
-        photoUrl: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=200',
-      },
-      {
-        id: '3',
-        name: 'Max',
-        photoUrl: 'https://images.unsplash.com/photo-1612536981610-2e8a36a0e5f1?w=200',
-      },
-      {
-        id: '4',
-        name: 'Bella',
-        photoUrl: 'https://images.unsplash.com/photo-1583511655826-05700d52f4d9?w=200',
-      },
-    ];
-    setStories(mockStories);
-  };
-
-  const handleSwipe = async (swipeType: 'like' | 'pass') => {
-    const currentPetId = pets[currentIndex]?.id;
-    console.log('HomeScreen: User swiped', swipeType, 'on pet:', pets[currentIndex]?.name);
-    
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-
-    const direction = swipeType === 'like' ? SCREEN_WIDTH * 1.5 : -SCREEN_WIDTH * 1.5;
-    
-    Animated.timing(position, {
-      toValue: { x: direction, y: 0 },
-      duration: 250,
-      useNativeDriver: false,
-    }).start(async () => {
-      position.setValue({ x: 0, y: 0 });
-      setCurrentIndex(currentIndex + 1);
-      
-      // Record swipe on backend
-      try {
-        const response = await authenticatedPost<{
-          success: boolean;
-          match?: {
-            matchId: string;
-            otherPet: {
-              id: string;
-              name: string;
-              breed: string;
-              photoUrl: string;
-            };
-          };
-        }>('/api/swipes', {
-          swipedPetId: currentPetId,
-          swipeType,
-        });
-
-        // Check if it's a match
-        if (response.match) {
-          console.log('HomeScreen: It\'s a match!', response.match.otherPet.name);
-          if (Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          // Show match notification
-          // TODO: Add match modal/notification UI
-        }
-      } catch (error) {
-        console.error('HomeScreen: Error recording swipe:', error);
-      }
-    });
-  };
-
-  const handleButtonPress = (swipeType: 'like' | 'pass') => {
-    handleSwipe(swipeType);
-  };
-
-  if (authLoading) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
-    );
-  }
-
   if (!user) {
-    console.log('HomeScreen: No user found, redirecting to auth');
     return <Redirect href="/auth" />;
   }
+
+  const rotate = position.x.interpolate({
+    inputRange: [-CARD_WIDTH, 0, CARD_WIDTH],
+    outputRange: ['-10deg', '0deg', '10deg'],
+  });
+
+  const likeOpacity = position.x.interpolate({
+    inputRange: [0, SWIPE_THRESHOLD],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const passOpacity = position.x.interpolate({
+    inputRange: [-SWIPE_THRESHOLD, 0],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
   const currentPet = pets[currentIndex];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: '',
-          headerStyle: { backgroundColor: colors.background },
-          headerLeft: () => (
-            <View style={styles.headerLeft}>
-              <Text style={styles.logo}>PawPaw</Text>
-              <IconSymbol
-                ios_icon_name="pawprint.fill"
-                android_material_icon_name="pets"
-                size={24}
-                color={colors.primary}
-                style={styles.logoIcon}
-              />
-            </View>
-          ),
-          headerRight: () => (
-            <TouchableOpacity style={styles.cameraButton}>
-              <IconSymbol
-                ios_icon_name="camera.fill"
-                android_material_icon_name="camera"
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.logo}>PawPaw</Text>
+      </View>
 
-      {/* Stories Row */}
-      <View style={styles.storiesContainer}>
+      {/* Stories Section */}
+      {stories.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.storiesContainer}
           contentContainerStyle={styles.storiesContent}
         >
-          {stories.map((story) => (
-            <TouchableOpacity key={story.id} style={styles.storyItem}>
-              <View style={[styles.storyCircle, story.isLive && styles.liveStoryCircle]}>
-                <Image source={{ uri: story.photoUrl }} style={styles.storyImage} />
-              </View>
-              {story.isLive && (
-                <View style={styles.liveBadge}>
-                  <Text style={styles.liveBadgeText}>LIVE</Text>
+          {stories.map((story) => {
+            const storyNameText = story.name;
+            return (
+              <TouchableOpacity
+                key={story.id}
+                style={styles.storyItem}
+                onPress={() => {
+                  if (story.isLive && story.streamId) {
+                    router.push(`/live/${story.streamId}`);
+                  }
+                }}
+              >
+                <View style={[styles.storyImageContainer, story.isLive && styles.liveStoryBorder]}>
+                  <Image source={{ uri: story.photoUrl }} style={styles.storyImage} />
+                  {story.isLive && (
+                    <View style={styles.liveBadge}>
+                      <Text style={styles.liveText}>LIVE</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-              <Text style={styles.storyName} numberOfLines={1}>
-                {story.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text style={styles.storyName} numberOfLines={1}>
+                  {storyNameText}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
-      </View>
+      )}
 
       {/* Swipe Cards */}
-      <View style={styles.cardsContainer}>
+      <View style={styles.cardContainer}>
         {loading ? (
-          <View style={styles.centered}>
-            <Text style={styles.loadingText}>Finding pets...</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Loading pets...</Text>
           </View>
-        ) : currentIndex >= pets.length ? (
-          <View style={styles.centered}>
-            <IconSymbol
-              ios_icon_name="pawprint.fill"
-              android_material_icon_name="pets"
-              size={64}
-              color={colors.textLight}
-            />
-            <Text style={styles.emptyText}>No more pets to discover!</Text>
-            <TouchableOpacity style={styles.reloadButton} onPress={loadPets}>
-              <Text style={styles.reloadButtonText}>Reload</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
+        ) : currentPet ? (
           <>
-            {/* Current Card */}
+            {/* Next card (behind) */}
+            {pets[currentIndex + 1] && (
+              <View style={[styles.card, styles.nextCard]}>
+                <Image
+                  source={{ uri: pets[currentIndex + 1].photoUrl }}
+                  style={styles.cardImage}
+                  resizeMode="cover"
+                />
+              </View>
+            )}
+
+            {/* Current card */}
             <Animated.View
               {...panResponder.panHandlers}
               style={[
@@ -332,50 +263,67 @@ export default function HomeScreen() {
                 },
               ]}
             >
-              <Image source={{ uri: currentPet.photoUrl }} style={styles.cardImage} />
+              <Image
+                source={{ uri: currentPet.photoUrl }}
+                style={styles.cardImage}
+                resizeMode="cover"
+              />
               
               {/* Like Overlay */}
               <Animated.View style={[styles.overlay, styles.likeOverlay, { opacity: likeOpacity }]}>
                 <Text style={styles.overlayText}>LIKE</Text>
               </Animated.View>
-              
-              {/* Nope Overlay */}
-              <Animated.View style={[styles.overlay, styles.nopeOverlay, { opacity: nopeOpacity }]}>
-                <Text style={styles.overlayText}>NOPE</Text>
+
+              {/* Pass Overlay */}
+              <Animated.View style={[styles.overlay, styles.passOverlay, { opacity: passOpacity }]}>
+                <Text style={styles.overlayText}>PASS</Text>
               </Animated.View>
 
               {/* Pet Info */}
               <View style={styles.cardInfo}>
-                <View style={styles.cardInfoRow}>
-                  <Text style={styles.petName}>{currentPet.name}</Text>
-                  <Text style={styles.petAge}>{currentPet.age}</Text>
-                </View>
-                <Text style={styles.petBreed}>{currentPet.breed}</Text>
+                <Text style={styles.petName}>{currentPet.name}</Text>
+                <Text style={styles.petDetails}>
+                  {currentPet.breed}
+                </Text>
+                <Text style={styles.petDetails}>
+                  {currentPet.age}
+                </Text>
+                {currentPet.bio && (
+                  <Text style={styles.petBio} numberOfLines={2}>
+                    {currentPet.bio}
+                  </Text>
+                )}
               </View>
             </Animated.View>
-
-            {/* Next Card Preview */}
-            {currentIndex + 1 < pets.length && (
-              <View style={[styles.card, styles.nextCard]}>
-                <Image source={{ uri: pets[currentIndex + 1].photoUrl }} style={styles.cardImage} />
-              </View>
-            )}
           </>
+        ) : (
+          <View style={styles.emptyState}>
+            <IconSymbol
+              ios_icon_name="pawprint.fill"
+              android_material_icon_name="pets"
+              size={64}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.emptyText}>No more pets to discover</Text>
+            <TouchableOpacity onPress={loadPets} style={styles.reloadButton}>
+              <Text style={styles.reloadButtonText}>Reload</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
       {/* Action Buttons */}
-      {currentIndex < pets.length && !loading && (
-        <View style={styles.actionsContainer}>
+      {currentPet && (
+        <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.actionButton, styles.nopeButton]}
+            style={[styles.actionButton, styles.passButton]}
             onPress={() => handleButtonPress('pass')}
           >
             <IconSymbol
               ios_icon_name="xmark"
               android_material_icon_name="close"
               size={32}
-              color={colors.error}
+              color="#FF6B6B"
             />
           </TouchableOpacity>
 
@@ -387,7 +335,7 @@ export default function HomeScreen() {
               ios_icon_name="heart.fill"
               android_material_icon_name="favorite"
               size={32}
-              color={colors.success}
+              color="#FF6B6B"
             />
           </TouchableOpacity>
         </View>
@@ -401,94 +349,79 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 16,
+  header: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   logo: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: colors.primary,
   },
-  logoIcon: {
-    marginLeft: 4,
-  },
-  cameraButton: {
-    marginRight: 16,
-    padding: 8,
-  },
   storiesContainer: {
-    height: 100,
-    backgroundColor: colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    maxHeight: 100,
+    marginBottom: 16,
   },
   storiesContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 12,
   },
   storyItem: {
     alignItems: 'center',
-    marginHorizontal: 8,
     width: 70,
   },
-  storyCircle: {
+  storyImageContainer: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    borderWidth: 3,
-    borderColor: colors.primary,
     padding: 2,
+    backgroundColor: colors.card,
+    marginBottom: 4,
   },
-  liveStoryCircle: {
-    borderColor: colors.error,
+  liveStoryBorder: {
+    borderWidth: 3,
+    borderColor: '#FF0000',
   },
   storyImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 28,
+    borderRadius: 30,
   },
   liveBadge: {
     position: 'absolute',
-    top: 48,
-    backgroundColor: colors.error,
+    bottom: -2,
+    alignSelf: 'center',
+    backgroundColor: '#FF0000',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: 8,
   },
-  liveBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
+  liveText: {
+    color: '#fff',
+    fontSize: 8,
     fontWeight: 'bold',
   },
   storyName: {
-    marginTop: 4,
     fontSize: 12,
-    color: colors.textSecondary,
+    color: colors.text,
     textAlign: 'center',
   },
-  cardsContainer: {
+  cardContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   card: {
-    width: SCREEN_WIDTH - 32,
-    height: SCREEN_HEIGHT * 0.6,
+    width: CARD_WIDTH,
+    height: CARD_WIDTH * 1.4,
     borderRadius: 20,
     backgroundColor: colors.card,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
     overflow: 'hidden',
   },
   nextCard: {
@@ -503,24 +436,24 @@ const styles = StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 50,
-    padding: 16,
+    padding: 20,
     borderWidth: 4,
     borderRadius: 12,
   },
   likeOverlay: {
-    right: 30,
-    borderColor: colors.success,
+    right: 50,
+    borderColor: '#4CAF50',
     transform: [{ rotate: '20deg' }],
   },
-  nopeOverlay: {
-    left: 30,
-    borderColor: colors.error,
+  passOverlay: {
+    left: 50,
+    borderColor: '#FF6B6B',
     transform: [{ rotate: '-20deg' }],
   },
   overlayText: {
-    fontSize: 48,
+    fontSize: 32,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#fff',
   },
   cardInfo: {
     position: 'absolute',
@@ -528,28 +461,25 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     padding: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  cardInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   petName: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginRight: 8,
+    color: '#fff',
+    marginBottom: 4,
   },
-  petAge: {
-    fontSize: 24,
-    color: '#FFFFFF',
-  },
-  petBreed: {
+  petDetails: {
     fontSize: 18,
-    color: '#FFFFFF',
-    marginTop: 4,
+    color: '#fff',
+    marginBottom: 2,
   },
-  actionsContainer: {
+  petBio: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 8,
+  },
+  actions: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -560,41 +490,41 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.card,
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.shadow,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 5,
   },
-  nopeButton: {
+  passButton: {
     borderWidth: 2,
-    borderColor: colors.error,
+    borderColor: '#FF6B6B',
   },
   likeButton: {
     borderWidth: 2,
-    borderColor: colors.success,
+    borderColor: '#4CAF50',
   },
-  loadingText: {
-    fontSize: 18,
-    color: colors.textSecondary,
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyText: {
     fontSize: 18,
     color: colors.textSecondary,
     marginTop: 16,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   reloadButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 24,
+    borderRadius: 8,
   },
   reloadButtonText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },

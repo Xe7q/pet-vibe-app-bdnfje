@@ -32,11 +32,24 @@ interface Wallet {
   totalEarned: number;
 }
 
+interface LiveStream {
+  id: string;
+  pet: {
+    id: string;
+    name: string;
+    photoUrl: string;
+  };
+  title: string;
+  viewerCount: number;
+  startedAt: string;
+}
+
 export default function ProfileScreen() {
   const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const [myPet, setMyPet] = useState<PetProfile | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [activeStreams, setActiveStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
 
@@ -44,6 +57,7 @@ export default function ProfileScreen() {
     console.log('ProfileScreen: Component mounted, user:', user?.id);
     if (user) {
       loadProfile();
+      loadActiveStreams();
     }
   }, [user]);
 
@@ -78,6 +92,17 @@ export default function ProfileScreen() {
       console.error('ProfileScreen: Error loading profile:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadActiveStreams = async () => {
+    try {
+      console.log('ProfileScreen: Loading active live streams');
+      const data = await authenticatedGet<LiveStream[]>('/api/live/active');
+      setActiveStreams(data);
+      console.log('ProfileScreen: Active streams loaded:', data.length);
+    } catch (error) {
+      console.error('ProfileScreen: Failed to load active streams:', error);
     }
   };
 
@@ -176,6 +201,61 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Active Live Streams */}
+        {activeStreams.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol
+                ios_icon_name="video.fill"
+                android_material_icon_name="videocam"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={styles.sectionTitle}>Live Now</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.streamsContainer}
+            >
+              {activeStreams.map((stream) => (
+                <TouchableOpacity
+                  key={stream.id}
+                  style={styles.streamCard}
+                  onPress={() => router.push(`/live/${stream.id}`)}
+                >
+                  <Image
+                    source={{ uri: stream.pet.photoUrl }}
+                    style={styles.streamImage}
+                  />
+                  <View style={styles.streamOverlay}>
+                    <View style={styles.liveBadge}>
+                      <Text style={styles.liveText}>LIVE</Text>
+                    </View>
+                    <View style={styles.viewerBadge}>
+                      <IconSymbol
+                        ios_icon_name="eye.fill"
+                        android_material_icon_name="visibility"
+                        size={12}
+                        color="#fff"
+                      />
+                      <Text style={styles.viewerText}>{stream.viewerCount}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.streamInfo}>
+                    <Text style={styles.streamPetName} numberOfLines={1}>
+                      {stream.pet.name}
+                    </Text>
+                    <Text style={styles.streamTitle} numberOfLines={1}>
+                      {stream.title}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {/* My Pet */}
         {loading ? (
           <View style={styles.loadingContainer}>
@@ -225,7 +305,10 @@ export default function ProfileScreen() {
             />
             <Text style={styles.noPetTitle}>No pet profile yet</Text>
             <Text style={styles.noPetSubtitle}>Create a profile for your pet to start matching!</Text>
-            <TouchableOpacity style={styles.createPetButton}>
+            <TouchableOpacity
+              style={styles.createPetButton}
+              onPress={() => router.push('/profile/create-pet')}
+            >
               <Text style={styles.createPetButtonText}>Create Pet Profile</Text>
             </TouchableOpacity>
           </View>
@@ -518,5 +601,87 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  section: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  streamsContainer: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  streamCard: {
+    width: 160,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.card,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  streamImage: {
+    width: '100%',
+    height: 120,
+  },
+  streamOverlay: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    right: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  liveBadge: {
+    backgroundColor: '#FF0000',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  liveText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  viewerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 3,
+  },
+  viewerText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  streamInfo: {
+    padding: 8,
+  },
+  streamPetName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  streamTitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
 });

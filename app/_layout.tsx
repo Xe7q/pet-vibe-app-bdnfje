@@ -93,6 +93,13 @@ export default function RootLayout() {
                 
                 {/* Main app with tabs */}
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                
+                {/* Live streaming screens */}
+                <Stack.Screen name="live/[streamId]" options={{ headerShown: false }} />
+                <Stack.Screen name="live/start" options={{ headerShown: false }} />
+                
+                {/* Profile screens */}
+                <Stack.Screen name="profile/create-pet" options={{ headerShown: false }} />
               </Stack>
               <SystemBars style={"auto"} />
               </GestureHandlerRootView>
