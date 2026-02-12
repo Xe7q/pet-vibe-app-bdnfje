@@ -44,7 +44,7 @@ export function registerLiveRoutes(app: App) {
           return reply.status(403).send({ error: 'Not authorized' });
         }
 
-        // Check if pet already has active stream
+        // Auto-cleanup: End any existing active streams for this pet
         const existingStream = await app.db.query.liveStreams.findFirst({
           where: and(
             eq(schema.liveStreams.petId, petId as any),
@@ -53,8 +53,21 @@ export function registerLiveRoutes(app: App) {
         });
 
         if (existingStream) {
-          app.logger.warn({ petId }, 'Pet already has active stream');
-          return reply.status(400).send({ error: 'Pet already has active stream' });
+          app.logger.info(
+            { existingStreamId: existingStream.id, petId },
+            'Ending existing active stream to start new one'
+          );
+          await app.db
+            .update(schema.liveStreams)
+            .set({
+              isActive: false,
+              endedAt: new Date(),
+            })
+            .where(eq(schema.liveStreams.id, existingStream.id));
+          app.logger.info(
+            { existingStreamId: existingStream.id, petId },
+            'Existing stream ended'
+          );
         }
 
         // Create live stream
@@ -177,6 +190,7 @@ export function registerLiveRoutes(app: App) {
             name: stream.pet.name,
             photoUrl: stream.pet.photoUrl,
           },
+          ownerId: stream.ownerId,
           title: stream.title,
           viewerCount: stream.viewerCount,
           startedAt: stream.startedAt,
@@ -225,6 +239,7 @@ export function registerLiveRoutes(app: App) {
             name: stream.pet.name,
             photoUrl: stream.pet.photoUrl,
           },
+          ownerId: stream.ownerId,
           title: stream.title,
           viewerCount: stream.viewerCount,
           startedAt: stream.startedAt,
