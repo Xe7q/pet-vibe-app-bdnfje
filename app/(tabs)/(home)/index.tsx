@@ -1,7 +1,4 @@
 
-import { Stack, useRouter, Redirect } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -15,15 +12,14 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { colors } from '@/styles/commonStyles';
-import { useAuth } from '@/contexts/AuthContext';
 import { apiGet, authenticatedPost } from '@/utils/api';
-import React, { useState, useEffect, useRef } from 'react';
+import { Stack, useRouter, Redirect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = width - 40;
-const SWIPE_THRESHOLD = 120;
+import { IconSymbol } from '@/components/IconSymbol';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@/contexts/AuthContext';
+import { colors } from '@/styles/commonStyles';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface PetProfile {
   id: string;
@@ -43,118 +39,21 @@ interface StoryItem {
   streamId?: string;
 }
 
+const CARD_WIDTH = Dimensions.get('window').width - 40;
+const SWIPE_THRESHOLD = 120;
+
 export default function HomeScreen() {
-  const { user } = useAuth();
   const router = useRouter();
-  
+  const { user } = useAuth();
   const [pets, setPets] = useState<PetProfile[]>([]);
   const [stories, setStories] = useState<StoryItem[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [matchModal, setMatchModal] = useState(false);
-  
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [backendError, setBackendError] = useState(false);
+
   const position = useRef(new Animated.ValueXY()).current;
-  const swipeAnimation = useRef<Animated.CompositeAnimation | null>(null);
-
-  useEffect(() => {
-    loadPets();
-    loadStories();
-  }, []);
-
-  const loadPets = async () => {
-    try {
-      console.log('[Home] Loading pets for discovery');
-      const data = await apiGet('/api/pets');
-      setPets(data);
-      console.log('[Home] Loaded pets:', data.length);
-    } catch (error) {
-      console.error('[Home] Failed to load pets:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadStories = async () => {
-    try {
-      console.log('[Home] Loading featured pets');
-      const featuredPets = await apiGet('/api/featured-pets');
-      
-      // If there are live pets, fetch active streams to get streamIds
-      const livePets = featuredPets.filter((pet: StoryItem) => pet.isLive);
-      if (livePets.length > 0) {
-        console.log('[Home] Fetching active streams for live pets');
-        const activeStreams = await apiGet('/api/live/active');
-        
-        // Map streamIds to featured pets
-        const storiesWithStreamIds = featuredPets.map((pet: StoryItem) => {
-          if (pet.isLive) {
-            const stream = activeStreams.find((s: any) => s.pet.id === pet.id);
-            return {
-              ...pet,
-              streamId: stream?.id,
-            };
-          }
-          return pet;
-        });
-        
-        setStories(storiesWithStreamIds);
-        console.log('[Home] Loaded featured pets with stream IDs:', storiesWithStreamIds.length);
-      } else {
-        setStories(featuredPets);
-        console.log('[Home] Loaded featured pets:', featuredPets.length);
-      }
-    } catch (error) {
-      console.error('[Home] Failed to load featured pets:', error);
-    }
-  };
-
-  const handleSwipe = async (swipeType: 'like' | 'pass') => {
-    if (currentIndex >= pets.length) return;
-
-    const currentPet = pets[currentIndex];
-    
-    try {
-      console.log(`[Home] Swiping ${swipeType} on pet:`, currentPet.id);
-      
-      // Trigger haptic feedback
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-
-      // Send swipe to backend
-      const response = await authenticatedPost('/api/swipes', {
-        swipedPetId: currentPet.id,
-        swipeType,
-      });
-
-      // Check for match
-      if (response.match) {
-        console.log('[Home] Match detected!');
-        if (Platform.OS !== 'web') {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-        setMatchModal(true);
-      }
-
-      // Move to next card
-      setCurrentIndex(prev => prev + 1);
-      position.setValue({ x: 0, y: 0 });
-    } catch (error) {
-      console.error('[Home] Failed to swipe:', error);
-    }
-  };
-
-  const handleButtonPress = (swipeType: 'like' | 'pass') => {
-    const toValue = swipeType === 'like' ? CARD_WIDTH * 2 : -CARD_WIDTH * 2;
-    
-    Animated.timing(position, {
-      toValue: { x: toValue, y: 0 },
-      duration: 250,
-      useNativeDriver: false,
-    }).start(() => {
-      handleSwipe(swipeType);
-    });
-  };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -164,19 +63,10 @@ export default function HomeScreen() {
       },
       onPanResponderRelease: (_, gesture) => {
         if (gesture.dx > SWIPE_THRESHOLD) {
-          // Swipe right (like)
-          Animated.spring(position, {
-            toValue: { x: CARD_WIDTH * 2, y: gesture.dy },
-            useNativeDriver: false,
-          }).start(() => handleSwipe('like'));
+          handleSwipe('like');
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
-          // Swipe left (pass)
-          Animated.spring(position, {
-            toValue: { x: -CARD_WIDTH * 2, y: gesture.dy },
-            useNativeDriver: false,
-          }).start(() => handleSwipe('pass'));
+          handleSwipe('pass');
         } else {
-          // Return to center
           Animated.spring(position, {
             toValue: { x: 0, y: 0 },
             useNativeDriver: false,
@@ -186,212 +76,266 @@ export default function HomeScreen() {
     })
   ).current;
 
+  useEffect(() => {
+    console.log('[Home] Component mounted, loading data...');
+    loadPets();
+    loadStories();
+  }, []);
+
+  const loadPets = async () => {
+    try {
+      console.log('[Home] Fetching pets...');
+      const response = await apiGet('/api/pets');
+      console.log('[Home] Pets loaded:', response);
+      setPets(response || []);
+      setBackendError(false);
+    } catch (error: any) {
+      console.error('[Home] Failed to load pets:', error);
+      if (error?.error === 'merged' || error?.message?.includes('merged')) {
+        console.log('[Home] Backend is merged/inactive');
+        setBackendError(true);
+        setErrorMessage('Backend is currently unavailable. The sandbox has been merged and needs to be recreated.');
+      } else {
+        setErrorMessage('Failed to load pets. Please try again.');
+      }
+      setPets([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStories = async () => {
+    try {
+      console.log('[Home] Fetching featured pets...');
+      const response = await apiGet('/api/featured-pets');
+      console.log('[Home] Featured pets loaded:', response);
+      setStories(response || []);
+    } catch (error) {
+      console.error('[Home] Failed to load featured pets:', error);
+      setStories([]);
+    }
+  };
+
+  const handleSwipe = async (swipeType: 'like' | 'pass') => {
+    if (currentIndex >= pets.length) {
+      console.log('[Home] No more pets to swipe');
+      return;
+    }
+
+    const currentPet = pets[currentIndex];
+    console.log(`[Home] Swiping ${swipeType} on pet:`, currentPet.name);
+
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    Animated.timing(position, {
+      toValue: { x: swipeType === 'like' ? 500 : -500, y: 0 },
+      duration: 300,
+      useNativeDriver: false,
+    }).start(() => {
+      position.setValue({ x: 0, y: 0 });
+      setCurrentIndex(currentIndex + 1);
+    });
+
+    try {
+      console.log(`[Home] Recording ${swipeType} swipe for pet:`, currentPet.id);
+      const response = await authenticatedPost('/api/swipes', {
+        likedPetId: currentPet.id,
+        swipeType,
+      });
+      console.log('[Home] Swipe response:', response);
+
+      if (response.match) {
+        console.log('[Home] It\'s a match!');
+        setErrorMessage('Pawsome! It\'s a Match! 🎉');
+        setShowErrorModal(true);
+      }
+    } catch (error) {
+      console.error('[Home] Failed to record swipe:', error);
+    }
+  };
+
+  const handleButtonPress = (swipeType: 'like' | 'pass') => {
+    console.log(`[Home] Button pressed: ${swipeType}`);
+    handleSwipe(swipeType);
+  };
+
   if (!user) {
+    console.log('[Home] User not authenticated, redirecting to auth');
     return <Redirect href="/auth" />;
   }
 
-  const rotate = position.x.interpolate({
-    inputRange: [-CARD_WIDTH, 0, CARD_WIDTH],
-    outputRange: ['-10deg', '0deg', '10deg'],
-  });
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading pets...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-  const likeOpacity = position.x.interpolate({
-    inputRange: [0, SWIPE_THRESHOLD],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-
-  const passOpacity = position.x.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, 0],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  if (backendError) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorTitle}>Backend Unavailable</Text>
+          <Text style={styles.errorText}>{errorMessage}</Text>
+          <TouchableOpacity
+            style={styles.errorButton}
+            onPress={() => router.push('/backend-error')}
+          >
+            <Text style={styles.errorButtonText}>Learn More</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.errorButton, styles.retryButton]}
+            onPress={() => {
+              setLoading(true);
+              loadPets();
+              loadStories();
+            }}
+          >
+            <Text style={styles.errorButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const currentPet = pets[currentIndex];
+  const petName = currentPet?.name || '';
+  const petBreed = currentPet?.breed || '';
+  const petAge = currentPet?.age?.toString() || '';
+  const petBio = currentPet?.bio || '';
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.logo}>PawPaw</Text>
-      </View>
 
-      {/* Stories Section */}
-      {stories.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.storiesContainer}
-          contentContainerStyle={styles.storiesContent}
-        >
-          {stories.map((story) => {
-            const storyNameText = story.name;
-            return (
-              <TouchableOpacity
-                key={story.id}
-                style={styles.storyItem}
-                onPress={() => {
-                  if (story.isLive && story.streamId) {
-                    router.push(`/live/${story.streamId}`);
-                  }
-                }}
-              >
-                <View style={[styles.storyImageContainer, story.isLive && styles.liveStoryBorder]}>
-                  <Image source={{ uri: story.photoUrl }} style={styles.storyImage} />
-                  {story.isLive && (
-                    <View style={styles.liveBadge}>
-                      <Text style={styles.liveText}>LIVE</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.storyName} numberOfLines={1}>
-                  {storyNameText}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
+      {/* Stories */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.storiesContainer}
+        contentContainerStyle={styles.storiesContent}
+      >
+        {stories.map((story) => {
+          const storyName = story.name;
+          const isLive = story.isLive || false;
+          return (
+            <TouchableOpacity
+              key={story.id}
+              style={styles.storyItem}
+              onPress={() => {
+                if (isLive && story.streamId) {
+                  console.log('[Home] Navigating to live stream:', story.streamId);
+                  router.push(`/live/${story.streamId}`);
+                }
+              }}
+            >
+              <View style={[styles.storyCircle, isLive && styles.liveStoryCircle]}>
+                <Image source={{ uri: story.photoUrl }} style={styles.storyImage} />
+              </View>
+              <Text style={styles.storyName}>{storyName}</Text>
+              {isLive && <Text style={styles.liveIndicator}>LIVE</Text>}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       {/* Swipe Cards */}
-      <View style={styles.cardContainer}>
-        {loading ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading pets...</Text>
-          </View>
-        ) : currentPet ? (
-          <>
-            {/* Next card (behind) */}
-            {pets[currentIndex + 1] && (
-              <View style={[styles.card, styles.nextCard]}>
-                <Image
-                  source={{ uri: pets[currentIndex + 1].photoUrl }}
-                  style={styles.cardImage}
-                  resizeMode="cover"
-                />
-              </View>
-            )}
-
-            {/* Current card */}
-            <Animated.View
-              {...panResponder.panHandlers}
-              style={[
-                styles.card,
-                {
-                  transform: [
-                    { translateX: position.x },
-                    { translateY: position.y },
-                    { rotate },
-                  ],
-                },
-              ]}
-            >
-              <Image
-                source={{ uri: currentPet.photoUrl }}
-                style={styles.cardImage}
-                resizeMode="cover"
-              />
-              
-              {/* Like Overlay */}
-              <Animated.View style={[styles.overlay, styles.likeOverlay, { opacity: likeOpacity }]}>
-                <Text style={styles.overlayText}>LIKE</Text>
-              </Animated.View>
-
-              {/* Pass Overlay */}
-              <Animated.View style={[styles.overlay, styles.passOverlay, { opacity: passOpacity }]}>
-                <Text style={styles.overlayText}>PASS</Text>
-              </Animated.View>
-
-              {/* Pet Info */}
-              <View style={styles.cardInfo}>
-                <Text style={styles.petName}>{currentPet.name}</Text>
-                <Text style={styles.petDetails}>
-                  {currentPet.breed}
-                </Text>
-                <Text style={styles.petDetails}>
-                  {currentPet.age}
-                </Text>
-                {currentPet.bio && (
-                  <Text style={styles.petBio} numberOfLines={2}>
-                    {currentPet.bio}
-                  </Text>
-                )}
-              </View>
-            </Animated.View>
-          </>
+      <View style={styles.cardsContainer}>
+        {currentIndex < pets.length ? (
+          <Animated.View
+            {...panResponder.panHandlers}
+            style={[
+              styles.card,
+              {
+                transform: [
+                  { translateX: position.x },
+                  { translateY: position.y },
+                  {
+                    rotate: position.x.interpolate({
+                      inputRange: [-CARD_WIDTH / 2, 0, CARD_WIDTH / 2],
+                      outputRange: ['-10deg', '0deg', '10deg'],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Image source={{ uri: currentPet.photoUrl }} style={styles.cardImage} />
+            <View style={styles.cardInfo}>
+              <Text style={styles.petName}>{petName}</Text>
+              <Text style={styles.petBreed}>{petBreed}</Text>
+              <Text style={styles.petAge}>{petAge}</Text>
+              <Text style={styles.petBio}>{petBio}</Text>
+            </View>
+          </Animated.View>
         ) : (
-          <View style={styles.emptyState}>
-            <IconSymbol
-              ios_icon_name="pawprint.fill"
-              android_material_icon_name="pets"
-              size={64}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.emptyText}>No more pets to discover</Text>
-            <TouchableOpacity onPress={loadPets} style={styles.reloadButton}>
+          <View style={styles.noMorePets}>
+            <Text style={styles.noMorePetsText}>No more pets to swipe!</Text>
+            <TouchableOpacity
+              style={styles.reloadButton}
+              onPress={() => {
+                console.log('[Home] Reloading pets...');
+                setCurrentIndex(0);
+                loadPets();
+              }}
+            >
               <Text style={styles.reloadButtonText}>Reload</Text>
             </TouchableOpacity>
           </View>
         )}
       </View>
 
-      {/* Action Buttons - Positioned above the FloatingTabBar */}
-      {currentPet && (
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.passButton]}
-            onPress={() => handleButtonPress('pass')}
-          >
-            <IconSymbol
-              ios_icon_name="xmark"
-              android_material_icon_name="close"
-              size={32}
-              color="#FF6B6B"
-            />
-          </TouchableOpacity>
+      {/* Action Buttons */}
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.passButton]}
+          onPress={() => handleButtonPress('pass')}
+        >
+          <IconSymbol
+            ios_icon_name="xmark"
+            android_material_icon_name="close"
+            size={32}
+            color="#fff"
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.likeButton]}
+          onPress={() => handleButtonPress('like')}
+        >
+          <IconSymbol
+            ios_icon_name="heart.fill"
+            android_material_icon_name="favorite"
+            size={32}
+            color="#fff"
+          />
+        </TouchableOpacity>
+      </View>
 
-          <TouchableOpacity
-            style={[styles.actionButton, styles.likeButton]}
-            onPress={() => handleButtonPress('like')}
-          >
-            <IconSymbol
-              ios_icon_name="heart.fill"
-              android_material_icon_name="favorite"
-              size={32}
-              color="#4CAF50"
-            />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Match Modal */}
+      {/* Modal */}
       <Modal
-        visible={matchModal}
+        visible={showErrorModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setMatchModal(false)}
+        onRequestClose={() => setShowErrorModal(false)}
       >
-        <View style={styles.matchModalOverlay}>
-          <View style={styles.matchModal}>
-            <Text style={styles.matchEmoji}>🎉</Text>
-            <Text style={styles.matchTitle}>Pawsome!</Text>
-            <Text style={styles.matchMessage}>It's a Match!</Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Match!</Text>
+            <Text style={styles.modalMessage}>{errorMessage}</Text>
             <TouchableOpacity
-              onPress={() => setMatchModal(false)}
-              style={styles.matchButton}
+              style={styles.modalButton}
+              onPress={() => setShowErrorModal(false)}
             >
-              <Text style={styles.matchButtonText}>Continue Swiping</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setMatchModal(false);
-                router.push('/(tabs)/matches');
-              }}
-              style={[styles.matchButton, styles.matchButtonSecondary]}
-            >
-              <Text style={styles.matchButtonSecondaryText}>View Matches</Text>
+              <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -403,185 +347,149 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#fff',
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  logo: {
-    fontSize: 28,
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  errorIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: colors.primary,
+    color: '#000',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  errorButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  errorButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  retryButton: {
+    backgroundColor: '#666',
   },
   storiesContainer: {
-    maxHeight: 100,
+    maxHeight: 120,
     marginBottom: 16,
   },
   storiesContent: {
     paddingHorizontal: 16,
-    gap: 12,
   },
   storyItem: {
     alignItems: 'center',
+    marginRight: 16,
+  },
+  storyCircle: {
     width: 70,
-  },
-  storyImageContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    padding: 2,
-    backgroundColor: colors.card,
-    marginBottom: 4,
-  },
-  liveStoryBorder: {
+    height: 70,
+    borderRadius: 35,
     borderWidth: 3,
-    borderColor: '#FF0000',
+    borderColor: '#ddd',
+    padding: 3,
+  },
+  liveStoryCircle: {
+    borderColor: colors.primary,
   },
   storyImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 30,
-  },
-  liveBadge: {
-    position: 'absolute',
-    bottom: -2,
-    alignSelf: 'center',
-    backgroundColor: '#FF0000',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  liveText: {
-    color: '#fff',
-    fontSize: 8,
-    fontWeight: 'bold',
+    borderRadius: 32,
   },
   storyName: {
+    marginTop: 4,
     fontSize: 12,
-    color: colors.text,
-    textAlign: 'center',
+    color: '#000',
   },
-  cardContainer: {
+  liveIndicator: {
+    fontSize: 10,
+    color: colors.primary,
+    fontWeight: 'bold',
+  },
+  cardsContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 120, // Space for action buttons + tab bar
   },
   card: {
     width: CARD_WIDTH,
     height: CARD_WIDTH * 1.4,
     borderRadius: 20,
-    backgroundColor: colors.card,
+    backgroundColor: '#fff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowRadius: 3.84,
     elevation: 5,
     overflow: 'hidden',
   },
-  nextCard: {
-    position: 'absolute',
-    opacity: 0.5,
-    transform: [{ scale: 0.95 }],
-  },
   cardImage: {
     width: '100%',
-    height: '100%',
-  },
-  overlay: {
-    position: 'absolute',
-    top: 50,
-    padding: 20,
-    borderWidth: 4,
-    borderRadius: 12,
-  },
-  likeOverlay: {
-    right: 50,
-    borderColor: '#4CAF50',
-    transform: [{ rotate: '20deg' }],
-  },
-  passOverlay: {
-    left: 50,
-    borderColor: '#FF6B6B',
-    transform: [{ rotate: '-20deg' }],
-  },
-  overlayText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
+    height: '70%',
   },
   cardInfo: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 16,
   },
   petName: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#000',
     marginBottom: 4,
   },
-  petDetails: {
-    fontSize: 18,
-    color: '#fff',
+  petBreed: {
+    fontSize: 16,
+    color: '#666',
     marginBottom: 2,
+  },
+  petAge: {
+    fontSize: 14,
+    color: '#999',
+    marginBottom: 8,
   },
   petBio: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 8,
+    color: '#666',
   },
-  actions: {
-    position: 'absolute',
-    bottom: 110, // Positioned above the FloatingTabBar (70px height + 20px margin + 20px spacing)
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
+  noMorePets: {
     alignItems: 'center',
-    gap: 40,
-    paddingHorizontal: 20,
   },
-  actionButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  passButton: {
-    borderWidth: 2,
-    borderColor: '#FF6B6B',
-  },
-  likeButton: {
-    borderWidth: 2,
-    borderColor: '#4CAF50',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyText: {
+  noMorePetsText: {
     fontSize: 18,
-    color: colors.textSecondary,
-    marginTop: 16,
-    marginBottom: 20,
+    color: '#666',
+    marginBottom: 16,
   },
   reloadButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
     borderRadius: 8,
   },
   reloadButtonText: {
@@ -589,59 +497,65 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  matchModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+  actionsContainer: {
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: 20,
+    gap: 40,
   },
-  matchModal: {
-    backgroundColor: colors.background,
-    borderRadius: 24,
-    padding: 32,
-    width: '100%',
+  actionButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  passButton: {
+    backgroundColor: '#FF6B6B',
+  },
+  likeButton: {
+    backgroundColor: '#4ECDC4',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '80%',
     maxWidth: 400,
-    alignItems: 'center',
   },
-  matchEmoji: {
-    fontSize: 80,
-    marginBottom: 16,
-  },
-  matchTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  matchMessage: {
+  modalTitle: {
     fontSize: 20,
-    color: colors.primary,
-    marginBottom: 32,
-    fontWeight: '600',
-  },
-  matchButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 12,
-    width: '100%',
-    alignItems: 'center',
+    fontWeight: 'bold',
+    color: '#000',
     marginBottom: 12,
   },
-  matchButtonText: {
+  modalMessage: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 24,
+  },
+  modalButton: {
+    height: 50,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalButtonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  matchButtonSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  matchButtonSecondaryText: {
-    color: colors.primary,
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

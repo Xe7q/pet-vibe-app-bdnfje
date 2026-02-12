@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import {
   View,
@@ -49,13 +50,18 @@ export default function AuthScreen() {
       return;
     }
 
+    console.log(`[Auth] Attempting ${mode} with email:`, email);
     setLoading(true);
     try {
       if (mode === "signin") {
+        console.log("[Auth] Calling signInWithEmail...");
         await signInWithEmail(email, password);
+        console.log("[Auth] Sign in successful, navigating to home");
         router.replace("/");
       } else {
+        console.log("[Auth] Calling signUpWithEmail...");
         await signUpWithEmail(email, password, name);
+        console.log("[Auth] Sign up successful");
         setSuccessModal({
           visible: true,
           message: "Account created successfully! You can now sign in.",
@@ -63,25 +69,34 @@ export default function AuthScreen() {
         setMode("signin");
       }
     } catch (error: any) {
-      setErrorModal({ visible: true, message: error.message || "Authentication failed" });
+      console.error(`[Auth] ${mode} failed:`, error);
+      const errorMessage = error?.message || error?.error || "Authentication failed. Please check your credentials and try again.";
+      setErrorModal({ visible: true, message: errorMessage });
     } finally {
       setLoading(false);
     }
   };
 
   const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
+    console.log(`[Auth] Attempting ${provider} sign in`);
     setLoading(true);
     try {
       if (provider === "google") {
+        console.log("[Auth] Calling signInWithGoogle...");
         await signInWithGoogle();
       } else if (provider === "apple") {
+        console.log("[Auth] Calling signInWithApple...");
         await signInWithApple();
       } else if (provider === "github") {
+        console.log("[Auth] Calling signInWithGitHub...");
         await signInWithGitHub();
       }
+      console.log(`[Auth] ${provider} sign in successful, navigating to home`);
       router.replace("/");
     } catch (error: any) {
-      setErrorModal({ visible: true, message: error.message || "Authentication failed" });
+      console.error(`[Auth] ${provider} sign in failed:`, error);
+      const errorMessage = error?.message || error?.error || `${provider} authentication failed. Please try again.`;
+      setErrorModal({ visible: true, message: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -95,7 +110,7 @@ export default function AuthScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
           <Text style={styles.title}>
-            {mode === "signin" ? "Sign In" : "Sign Up"}
+            {mode === "signin" ? "Sign In to PawPaw" : "Create PawPaw Account"}
           </Text>
 
           {mode === "signup" && (
@@ -189,7 +204,7 @@ export default function AuthScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Error</Text>
+            <Text style={styles.modalTitle}>Login Error</Text>
             <Text style={styles.modalMessage}>{errorModal.message}</Text>
             <TouchableOpacity
               style={styles.modalButton}
