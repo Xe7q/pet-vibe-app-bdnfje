@@ -31,6 +31,7 @@ export default function CreatePetScreen() {
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const showError = (message: string) => {
@@ -57,11 +58,12 @@ export default function CreatePetScreen() {
   const uploadImage = async (uri: string): Promise<string> => {
     try {
       console.log('[CreatePet] Starting image upload');
+      console.log('[CreatePet] Image URI:', uri);
       
       // Get bearer token
       const token = await getBearerToken();
       if (!token) {
-        throw new Error('Authentication token not found');
+        throw new Error('Authentication token not found. Please sign in again.');
       }
 
       // Create form data
@@ -70,17 +72,20 @@ export default function CreatePetScreen() {
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : 'image/jpeg';
       
-      console.log('[CreatePet] Preparing file:', { filename, type });
+      console.log('[CreatePet] Preparing file:', { filename, type, uri });
       
-      formData.append('image', {
-        uri,
+      // Append the file to FormData
+      // @ts-expect-error - React Native FormData accepts this format
+      formData.append('file', {
+        uri: Platform.OS === 'web' ? uri : uri,
         name: filename,
         type,
-      } as any);
+      });
 
       // Upload to backend
       const uploadUrl = `${BACKEND_URL}/api/upload/pet-photo`;
       console.log('[CreatePet] Uploading to:', uploadUrl);
+      console.log('[CreatePet] FormData prepared with field name: file');
       
       const response = await fetch(uploadUrl, {
         method: 'POST',
@@ -88,6 +93,7 @@ export default function CreatePetScreen() {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
+          // Don't set Content-Type - let the browser/RN set it with boundary
         },
       });
 
@@ -95,21 +101,30 @@ export default function CreatePetScreen() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[CreatePet] Upload failed:', errorText);
-        throw new Error(`Upload failed: ${response.status}`);
+        console.error('[CreatePet] Upload failed with status:', response.status);
+        console.error('[CreatePet] Error response:', errorText);
+        throw new Error(`Upload failed: ${response.status}. ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('[CreatePet] Upload response data:', data);
+      
+      if (!data.url) {
+        throw new Error('Upload succeeded but no URL returned');
+      }
+      
       console.log('[CreatePet] Image uploaded successfully:', data.url);
       return data.url;
-    } catch (error) {
+    } catch (error: any) {
       console.error('[CreatePet] Upload error:', error);
-      throw error;
+      console.error('[CreatePet] Error details:', error.message);
+      throw new Error(`Failed to upload image: ${error.message}`);
     }
   };
 
   const handleCreate = async () => {
     console.log('[CreatePet] Create button pressed');
+    console.log('[CreatePet] Form data:', { name, breed, age, bio, hasPhoto: !!photoUri });
     
     if (!name.trim() || !breed.trim() || !age.trim() || !photoUri) {
       showError('Please fill in all required fields and add a photo');
@@ -129,7 +144,7 @@ export default function CreatePetScreen() {
       setUploading(true);
       const photoUrl = await uploadImage(photoUri);
       setUploading(false);
-      console.log('[CreatePet] Image upload complete');
+      console.log('[CreatePet] Image upload complete, URL:', photoUrl);
 
       // Create pet profile
       console.log('[CreatePet] Step 2: Creating pet profile');
@@ -140,21 +155,21 @@ export default function CreatePetScreen() {
         bio: bio.trim() || undefined,
         photoUrl,
       };
-      console.log('[CreatePet] Pet data:', petData);
+      console.log('[CreatePet] Sending pet data:', petData);
       
-      await authenticatedPost('/api/pets', petData);
-
-      console.log('[CreatePet] Pet profile created successfully');
-      setErrorMessage('Pet profile created! 🎉');
-      setErrorModalVisible(true);
+      const response = await authenticatedPost('/api/pets', petData);
+      console.log('[CreatePet] Pet profile created successfully:', response);
+      
+      setSuccessModalVisible(true);
       
       // Navigate back after a short delay
       setTimeout(() => {
-        setErrorModalVisible(false);
+        setSuccessModalVisible(false);
         router.back();
       }, 1500);
     } catch (error: any) {
       console.error('[CreatePet] Failed to create pet profile:', error);
+      console.error('[CreatePet] Error message:', error.message);
       showError(error.message || 'Failed to create pet profile. Please try again.');
     } finally {
       setCreating(false);
@@ -272,7 +287,7 @@ export default function CreatePetScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Error/Success Modal */}
+      {/* Error Modal */}
       <Modal
         visible={errorModalVisible}
         transparent
@@ -281,6 +296,13 @@ export default function CreatePetScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="error"
+              size={48}
+              color="#FF6B6B"
+            />
+            <Text style={styles.modalTitle}>Upload Failed</Text>
             <Text style={styles.modalText}>{errorMessage}</Text>
             <TouchableOpacity
               onPress={() => setErrorModalVisible(false)}
@@ -288,6 +310,27 @@ export default function CreatePetScreen() {
             >
               <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success Modal */}
+      <Modal
+        visible={successModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSuccessModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <IconSymbol
+              ios_icon_name="checkmark.circle.fill"
+              android_material_icon_name="check-circle"
+              size={64}
+              color="#4CAF50"
+            />
+            <Text style={styles.modalTitle}>Success!</Text>
+            <Text style={styles.modalText}>Pet profile created! 🎉</Text>
           </View>
         </View>
       </Modal>
@@ -399,16 +442,23 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: colors.background,
     borderRadius: 16,
-    padding: 24,
+    padding: 32,
     width: '80%',
     maxWidth: 400,
     alignItems: 'center',
   },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
   modalText: {
     fontSize: 16,
-    color: colors.text,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   modalButton: {
     backgroundColor: colors.primary,

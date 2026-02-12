@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   View,
@@ -63,6 +63,37 @@ export default function LiveStreamScreen() {
   
   const scrollViewRef = useRef<ScrollView>(null);
 
+  const loadStreamData = useCallback(async () => {
+    try {
+      console.log('[LiveStream] Loading stream data for:', streamId);
+      const data = await apiGet(`/api/live/${streamId}`);
+      setStream(data);
+      console.log('[LiveStream] Stream loaded:', data);
+    } catch (error) {
+      console.error('[LiveStream] Failed to load stream:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [streamId]);
+
+  const joinStream = useCallback(async () => {
+    try {
+      await authenticatedPost(`/api/live/${streamId}/join`, {});
+      console.log('[LiveStream] Joined stream');
+    } catch (error) {
+      console.error('[LiveStream] Failed to join stream:', error);
+    }
+  }, [streamId]);
+
+  const leaveStream = useCallback(async () => {
+    try {
+      await authenticatedPost(`/api/live/${streamId}/leave`, {});
+      console.log('[LiveStream] Left stream');
+    } catch (error) {
+      console.error('[LiveStream] Failed to leave stream:', error);
+    }
+  }, [streamId]);
+
   useEffect(() => {
     loadStreamData();
     joinStream();
@@ -92,38 +123,7 @@ export default function LiveStreamScreen() {
       clearInterval(interval);
       leaveStream();
     };
-  }, [streamId]);
-
-  const loadStreamData = async () => {
-    try {
-      console.log('[LiveStream] Loading stream data for:', streamId);
-      const data = await apiGet(`/api/live/${streamId}`);
-      setStream(data);
-      console.log('[LiveStream] Stream loaded:', data);
-    } catch (error) {
-      console.error('[LiveStream] Failed to load stream:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const joinStream = async () => {
-    try {
-      await authenticatedPost(`/api/live/${streamId}/join`, {});
-      console.log('[LiveStream] Joined stream');
-    } catch (error) {
-      console.error('[LiveStream] Failed to join stream:', error);
-    }
-  };
-
-  const leaveStream = async () => {
-    try {
-      await authenticatedPost(`/api/live/${streamId}/leave`, {});
-      console.log('[LiveStream] Left stream');
-    } catch (error) {
-      console.error('[LiveStream] Failed to leave stream:', error);
-    }
-  };
+  }, [streamId, loadStreamData, joinStream, leaveStream]);
 
   const loadBalance = async () => {
     try {

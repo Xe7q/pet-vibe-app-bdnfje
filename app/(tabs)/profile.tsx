@@ -1,5 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Stack, useRouter, Redirect } from 'expo-router';
 import {
   View,
   Text,
@@ -10,7 +11,6 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
-import { Stack, useRouter, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
@@ -45,92 +45,92 @@ interface LiveStream {
 }
 
 export default function ProfileScreen() {
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const router = useRouter();
-  const [myPet, setMyPet] = useState<PetProfile | null>(null);
+  
+  const [petProfile, setPetProfile] = useState<PetProfile | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [activeStreams, setActiveStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [signOutModalVisible, setSignOutModalVisible] = useState(false);
 
-  useEffect(() => {
-    console.log('ProfileScreen: Component mounted, user:', user?.id);
-    if (user) {
-      loadProfile();
-      loadActiveStreams();
+  const loadActiveStreams = useCallback(async () => {
+    try {
+      const streams = await authenticatedGet<LiveStream[]>('/api/live/active');
+      setActiveStreams(streams);
+      console.log('ProfileScreen: Active streams loaded:', streams.length);
+    } catch (error) {
+      console.error('ProfileScreen: Error loading active streams:', error);
     }
-  }, [user]);
+  }, []);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     console.log('ProfileScreen: Loading user profile and pet');
     try {
       setLoading(true);
       
       // Load pet profile
-      try {
-        const petResponse = await authenticatedGet<PetProfile>('/api/pets/my-pet');
-        setMyPet(petResponse);
-        console.log('ProfileScreen: Pet profile loaded:', petResponse.name);
-      } catch (error: any) {
-        console.log('ProfileScreen: No pet profile found or error:', error.message);
-        setMyPet(null);
-      }
+      const pet = await authenticatedGet<PetProfile | null>('/api/pets/my-pet');
+      setPetProfile(pet);
+      console.log('ProfileScreen: Pet profile loaded:', pet ? pet.name : 'No pet');
       
       // Load wallet
-      try {
-        const walletResponse = await authenticatedGet<Wallet>('/api/wallet');
-        setWallet(walletResponse);
-        console.log('ProfileScreen: Wallet loaded, balance:', walletResponse.balance);
-      } catch (error: any) {
-        console.error('ProfileScreen: Error loading wallet:', error.message);
-        // Set default wallet if API fails
-        setWallet({ balance: 100, totalEarned: 0 });
-      }
+      console.log('ProfileScreen: Loading wallet');
+      const walletData = await authenticatedGet<Wallet>('/api/wallet');
+      setWallet(walletData);
+      console.log('ProfileScreen: Wallet loaded, balance:', walletData.balance);
+      
+      // Load active streams
+      console.log('ProfileScreen: Loading active live streams');
+      loadActiveStreams();
       
       console.log('ProfileScreen: Profile loaded successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('ProfileScreen: Error loading profile:', error);
+      console.error('ProfileScreen: Error message:', error.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadActiveStreams]);
 
-  const loadActiveStreams = async () => {
-    try {
-      console.log('ProfileScreen: Loading active live streams');
-      const data = await authenticatedGet<LiveStream[]>('/api/live/active');
-      setActiveStreams(data);
-      console.log('ProfileScreen: Active streams loaded:', data.length);
-    } catch (error) {
-      console.error('ProfileScreen: Failed to load active streams:', error);
+  useEffect(() => {
+    if (user) {
+      console.log('ProfileScreen: Component mounted, user:', user.id);
+      loadProfile();
     }
-  };
+  }, [user, loadProfile]);
 
   const handleSignOut = async () => {
-    console.log('ProfileScreen: User initiated sign out');
-    setShowSignOutModal(false);
+    console.log('ProfileScreen: Sign out requested');
+    setSignOutModalVisible(false);
     try {
       await signOut();
       console.log('ProfileScreen: Sign out successful');
+      router.replace('/auth');
     } catch (error) {
-      console.error('ProfileScreen: Error signing out:', error);
+      console.error('ProfileScreen: Sign out error:', error);
     }
   };
 
-  if (authLoading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
   if (!user) {
-    console.log('ProfileScreen: No user found, redirecting to auth');
+    console.log('ProfileScreen: No user, redirecting to auth');
     return <Redirect href="/auth" />;
   }
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const userName = user.name || user.email || 'User';
+  const balanceText = wallet ? wallet.balance.toString() : '0';
+  const earningsText = wallet ? wallet.totalEarned.toString() : '0';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -146,12 +146,12 @@ export default function ProfileScreen() {
           },
           headerRight: () => (
             <TouchableOpacity
-              style={styles.settingsButton}
-              onPress={() => setShowSignOutModal(true)}
+              onPress={() => setSignOutModalVisible(true)}
+              style={styles.signOutButton}
             >
               <IconSymbol
-                ios_icon_name="gearshape.fill"
-                android_material_icon_name="settings"
+                ios_icon_name="rectangle.portrait.and.arrow.right"
+                android_material_icon_name="logout"
                 size={24}
                 color={colors.text}
               />
@@ -160,113 +160,34 @@ export default function ProfileScreen() {
         }}
       />
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.content}>
         {/* User Info */}
         <View style={styles.userSection}>
           <View style={styles.userAvatar}>
-            <IconSymbol
-              ios_icon_name="person.fill"
-              android_material_icon_name="person"
-              size={40}
-              color={colors.primary}
-            />
+            {user.image ? (
+              <Image source={{ uri: user.image }} style={styles.avatarImage} />
+            ) : (
+              <IconSymbol
+                ios_icon_name="person.circle.fill"
+                android_material_icon_name="account-circle"
+                size={80}
+                color={colors.primary}
+              />
+            )}
           </View>
           <Text style={styles.userName}>{userName}</Text>
           <Text style={styles.userEmail}>{user.email}</Text>
         </View>
 
-        {/* Wallet */}
-        {wallet && (
-          <View style={styles.walletCard}>
-            <View style={styles.walletHeader}>
-              <IconSymbol
-                ios_icon_name="dollarsign.circle.fill"
-                android_material_icon_name="account-balance-wallet"
-                size={24}
-                color={colors.primary}
-              />
-              <Text style={styles.walletTitle}>Kibble Balance</Text>
-            </View>
-            <View style={styles.walletStats}>
-              <View style={styles.walletStat}>
-                <Text style={styles.walletStatValue}>{wallet.balance}</Text>
-                <Text style={styles.walletStatLabel}>Current Balance</Text>
-              </View>
-              <View style={styles.walletDivider} />
-              <View style={styles.walletStat}>
-                <Text style={styles.walletStatValue}>{wallet.totalEarned}</Text>
-                <Text style={styles.walletStatLabel}>Total Earned</Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Active Live Streams */}
-        {activeStreams.length > 0 && (
+        {/* Pet Profile Section */}
+        {petProfile ? (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <IconSymbol
-                ios_icon_name="video.fill"
-                android_material_icon_name="videocam"
-                size={20}
-                color={colors.primary}
-              />
-              <Text style={styles.sectionTitle}>Live Now</Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.streamsContainer}
-            >
-              {activeStreams.map((stream) => (
-                <TouchableOpacity
-                  key={stream.id}
-                  style={styles.streamCard}
-                  onPress={() => router.push(`/live/${stream.id}`)}
-                >
-                  <Image
-                    source={{ uri: stream.pet.photoUrl }}
-                    style={styles.streamImage}
-                  />
-                  <View style={styles.streamOverlay}>
-                    <View style={styles.liveBadge}>
-                      <Text style={styles.liveText}>LIVE</Text>
-                    </View>
-                    <View style={styles.viewerBadge}>
-                      <IconSymbol
-                        ios_icon_name="eye.fill"
-                        android_material_icon_name="visibility"
-                        size={12}
-                        color="#fff"
-                      />
-                      <Text style={styles.viewerText}>{stream.viewerCount}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.streamInfo}>
-                    <Text style={styles.streamPetName} numberOfLines={1}>
-                      {stream.pet.name}
-                    </Text>
-                    <Text style={styles.streamTitle} numberOfLines={1}>
-                      {stream.title}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* My Pet */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading your pet...</Text>
-          </View>
-        ) : myPet ? (
-          <View style={styles.petCard}>
-            <View style={styles.petCardHeader}>
-              <Text style={styles.petCardTitle}>My Pet</Text>
-              <TouchableOpacity style={styles.editButton}>
+              <Text style={styles.sectionTitle}>My Pet</Text>
+              <TouchableOpacity
+                onPress={() => router.push(`/profile/edit-pet`)}
+                style={styles.editButton}
+              >
                 <IconSymbol
                   ios_icon_name="pencil"
                   android_material_icon_name="edit"
@@ -275,69 +196,142 @@ export default function ProfileScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <Image source={{ uri: myPet.photoUrl }} style={styles.petImage} />
-            <View style={styles.petInfo}>
-              <View style={styles.petNameRow}>
-                <Text style={styles.petName}>{myPet.name}</Text>
-                <Text style={styles.petAge}>{myPet.age}</Text>
-              </View>
-              <Text style={styles.petBreed}>{myPet.breed}</Text>
-              {myPet.bio && <Text style={styles.petBio}>{myPet.bio}</Text>}
-              <View style={styles.petStats}>
-                <IconSymbol
-                  ios_icon_name="heart.fill"
-                  android_material_icon_name="favorite"
-                  size={20}
-                  color={colors.primary}
-                />
-                <Text style={styles.petLikes}>{myPet.likesCount}</Text>
-                <Text style={styles.petLikesLabel}>likes</Text>
+            <View style={styles.petCard}>
+              <Image source={{ uri: petProfile.photoUrl }} style={styles.petImage} />
+              <View style={styles.petInfo}>
+                <Text style={styles.petName}>{petProfile.name}</Text>
+                <Text style={styles.petBreed}>{petProfile.breed}</Text>
+                <Text style={styles.petAge}>{petProfile.age}</Text>
+                {petProfile.bio && (
+                  <Text style={styles.petBio} numberOfLines={2}>
+                    {petProfile.bio}
+                  </Text>
+                )}
+                <View style={styles.petStats}>
+                  <IconSymbol
+                    ios_icon_name="heart.fill"
+                    android_material_icon_name="favorite"
+                    size={16}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.petLikes}>{petProfile.likesCount}</Text>
+                </View>
               </View>
             </View>
           </View>
         ) : (
-          <View style={styles.noPetCard}>
-            <IconSymbol
-              ios_icon_name="pawprint"
-              android_material_icon_name="pets"
-              size={64}
-              color={colors.textLight}
-            />
-            <Text style={styles.noPetTitle}>No pet profile yet</Text>
-            <Text style={styles.noPetSubtitle}>Create a profile for your pet to start matching!</Text>
-            <TouchableOpacity
-              style={styles.createPetButton}
-              onPress={() => router.push('/profile/create-pet')}
-            >
-              <Text style={styles.createPetButtonText}>Create Pet Profile</Text>
-            </TouchableOpacity>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>My Pet</Text>
+            <View style={styles.noPetCard}>
+              <IconSymbol
+                ios_icon_name="pawprint.fill"
+                android_material_icon_name="pets"
+                size={48}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.noPetText}>No pet profile yet</Text>
+              <TouchableOpacity
+                onPress={() => router.push('/profile/create-pet')}
+                style={styles.createPetButton}
+              >
+                <Text style={styles.createPetButtonText}>Create Pet Profile</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
+
+        {/* Wallet Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Kibble Wallet</Text>
+          <View style={styles.walletCard}>
+            <View style={styles.walletItem}>
+              <Text style={styles.walletLabel}>Balance</Text>
+              <Text style={styles.walletValue}>{balanceText}</Text>
+            </View>
+            <View style={styles.walletDivider} />
+            <View style={styles.walletItem}>
+              <Text style={styles.walletLabel}>Total Earned</Text>
+              <Text style={styles.walletValue}>{earningsText}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Active Streams */}
+        {activeStreams.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Active Streams</Text>
+            {activeStreams.map((stream) => {
+              const viewerCountText = stream.viewerCount.toString();
+              return (
+                <TouchableOpacity
+                  key={stream.id}
+                  style={styles.streamCard}
+                  onPress={() => router.push(`/live/${stream.id}`)}
+                >
+                  <Image source={{ uri: stream.pet.photoUrl }} style={styles.streamImage} />
+                  <View style={styles.streamInfo}>
+                    <Text style={styles.streamTitle}>{stream.title}</Text>
+                    <Text style={styles.streamPet}>{stream.pet.name}</Text>
+                    <View style={styles.streamStats}>
+                      <View style={styles.liveBadge}>
+                        <Text style={styles.liveText}>LIVE</Text>
+                      </View>
+                      <Text style={styles.viewerCount}>{viewerCountText}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/live/start')}
+          >
+            <IconSymbol
+              ios_icon_name="video.fill"
+              android_material_icon_name="videocam"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={styles.actionButtonText}>Start Live Stream</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
-      {/* Sign Out Modal */}
+      {/* Sign Out Confirmation Modal */}
       <Modal
-        visible={showSignOutModal}
+        visible={signOutModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowSignOutModal(false)}
+        onRequestClose={() => setSignOutModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Sign Out</Text>
-            <Text style={styles.modalMessage}>Are you sure you want to sign out?</Text>
+            <Text style={styles.modalText}>Are you sure you want to sign out?</Text>
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => setShowSignOutModal(false)}
+                onPress={() => setSignOutModalVisible(false)}
+                style={[styles.modalButton, styles.cancelButton]}
               >
-                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonConfirm]}
                 onPress={handleSignOut}
+                style={[styles.modalButton, styles.confirmButton]}
               >
-                <Text style={styles.modalButtonTextConfirm}>Sign Out</Text>
+                <Text style={styles.confirmButtonText}>Sign Out</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -352,34 +346,40 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  centered: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  settingsButton: {
-    marginRight: 16,
-    padding: 8,
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
+  content: {
+    padding: 20,
     paddingBottom: 100,
+  },
+  signOutButton: {
+    marginRight: 16,
   },
   userSection: {
     alignItems: 'center',
-    paddingVertical: 24,
-    backgroundColor: colors.backgroundSecondary,
+    marginBottom: 32,
   },
   userAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: colors.card,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   userName: {
     fontSize: 24,
@@ -388,119 +388,68 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   userEmail: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  walletCard: {
-    margin: 16,
-    padding: 20,
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  walletHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  walletTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginLeft: 8,
-  },
-  walletStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  walletStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  walletStatValue: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 4,
-  },
-  walletStatLabel: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  walletDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: 16,
-  },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
     fontSize: 16,
     color: colors.textSecondary,
   },
-  petCard: {
-    margin: 16,
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+  section: {
+    marginBottom: 24,
   },
-  petCardHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    marginBottom: 12,
   },
-  petCardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 12,
   },
   editButton: {
     padding: 8,
   },
+  petCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
   petImage: {
-    width: '100%',
-    aspectRatio: 1,
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    marginRight: 16,
   },
   petInfo: {
-    padding: 16,
-  },
-  petNameRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 4,
+    flex: 1,
+    justifyContent: 'center',
   },
   petName: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
-    marginRight: 8,
-  },
-  petAge: {
-    fontSize: 18,
-    color: colors.textSecondary,
+    marginBottom: 4,
   },
   petBreed: {
     fontSize: 16,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  petAge: {
+    fontSize: 14,
     color: colors.textSecondary,
     marginBottom: 8,
   },
   petBio: {
     fontSize: 14,
     color: colors.text,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   petStats: {
     flexDirection: 'row',
@@ -508,19 +457,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   petLikes: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
   },
-  petLikesLabel: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
   noPetCard: {
-    margin: 16,
-    padding: 40,
     backgroundColor: colors.card,
     borderRadius: 16,
+    padding: 32,
     alignItems: 'center',
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
@@ -528,29 +472,124 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  noPetTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  noPetSubtitle: {
-    fontSize: 14,
+  noPetText: {
+    fontSize: 16,
     color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 24,
+    marginTop: 12,
+    marginBottom: 20,
   },
   createPetButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 24,
+    paddingHorizontal: 24,
+    borderRadius: 8,
   },
   createPetButtonText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  walletCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  walletItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  walletDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: 16,
+  },
+  walletLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  walletValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  streamCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  streamImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  streamInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  streamTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  streamPet: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  streamStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveBadge: {
+    backgroundColor: '#FF0000',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  liveText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  viewerCount: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  actionButtonText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginLeft: 12,
   },
   modalOverlay: {
     flex: 1,
@@ -559,7 +598,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.background,
     borderRadius: 16,
     padding: 24,
     width: '80%',
@@ -571,7 +610,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 12,
   },
-  modalMessage: {
+  modalText: {
     fontSize: 16,
     color: colors.textSecondary,
     marginBottom: 24,
@@ -586,102 +625,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  modalButtonCancel: {
-    backgroundColor: colors.backgroundSecondary,
-  },
-  modalButtonConfirm: {
-    backgroundColor: colors.error,
-  },
-  modalButtonTextCancel: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalButtonTextConfirm: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  section: {
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  streamsContainer: {
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  streamCard: {
-    width: 160,
-    borderRadius: 12,
-    overflow: 'hidden',
+  cancelButton: {
     backgroundColor: colors.card,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  streamImage: {
-    width: '100%',
-    height: 120,
+  confirmButton: {
+    backgroundColor: colors.primary,
   },
-  streamOverlay: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    right: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  liveBadge: {
-    backgroundColor: '#FF0000',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  liveText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  viewerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 8,
-    gap: 3,
-  },
-  viewerText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  streamInfo: {
-    padding: 8,
-  },
-  streamPetName: {
-    fontSize: 14,
-    fontWeight: '600',
+  cancelButtonText: {
     color: colors.text,
-    marginBottom: 2,
+    fontSize: 16,
+    fontWeight: '600',
   },
-  streamTitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
+  confirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
