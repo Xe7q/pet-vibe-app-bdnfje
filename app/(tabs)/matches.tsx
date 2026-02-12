@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, Redirect } from 'expo-router';
+import { Stack, Redirect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
@@ -36,6 +36,7 @@ export default function MatchesScreen() {
   const { user, loading: authLoading } = useAuth();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     console.log('MatchesScreen: Component mounted');
@@ -51,7 +52,6 @@ export default function MatchesScreen() {
       console.log('MatchesScreen: Loaded', response.length, 'matches');
     } catch (error) {
       console.error('MatchesScreen: Error loading matches:', error);
-      // Fallback to mock data if API fails
       const mockMatches: Match[] = [
         {
           id: '1',
@@ -126,6 +126,11 @@ export default function MatchesScreen() {
     return date.toLocaleDateString();
   };
 
+  const handleChatPress = (matchId: string) => {
+    console.log('MatchesScreen: Opening chat for match', matchId);
+    router.push(`/chat/${matchId}`);
+  };
+
   if (authLoading) {
     return (
       <View style={styles.centered}>
@@ -144,7 +149,7 @@ export default function MatchesScreen() {
     const petAge = item.otherPet.age.toString();
 
     return (
-      <TouchableOpacity style={styles.matchCard}>
+      <View style={styles.matchCard}>
         <Image source={{ uri: item.otherPet.photoUrl }} style={styles.matchImage} />
         <View style={styles.matchBadge}>
           <IconSymbol
@@ -162,8 +167,20 @@ export default function MatchesScreen() {
             <Text style={styles.matchBreed}>{item.otherPet.breed}</Text>
           </View>
           <Text style={styles.matchTime}>{matchTime}</Text>
+          <TouchableOpacity
+            style={styles.chatButton}
+            onPress={() => handleChatPress(item.id)}
+          >
+            <IconSymbol
+              ios_icon_name="message.fill"
+              android_material_icon_name="message"
+              size={18}
+              color="#FFFFFF"
+            />
+            <Text style={styles.chatButtonText}>Chat</Text>
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -305,6 +322,22 @@ const styles = StyleSheet.create({
   matchTime: {
     fontSize: 12,
     color: colors.textLight,
+    marginBottom: 8,
+  },
+  chatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  chatButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,
