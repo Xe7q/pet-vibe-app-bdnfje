@@ -6,6 +6,7 @@ import {
   timestamp,
   uniqueIndex,
   index,
+  boolean,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -21,6 +22,7 @@ export const petProfiles = pgTable(
     bio: text('bio'),
     photoUrl: text('photo_url').notNull(),
     likesCount: integer('likes_count').default(0).notNull(),
+    isFeatured: boolean('is_featured').default(false).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -28,6 +30,7 @@ export const petProfiles = pgTable(
   (table) => [
     index('pet_profiles_owner_id_idx').on(table.ownerId),
     index('pet_profiles_likes_count_idx').on(table.likesCount),
+    index('pet_profiles_is_featured_idx').on(table.isFeatured),
   ]
 );
 
@@ -108,9 +111,34 @@ export const userWallets = pgTable('user_wallets', {
     .notNull(),
 });
 
+// Live Streams table
+export const liveStreams = pgTable(
+  'live_streams',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    petId: uuid('pet_id')
+      .notNull()
+      .references(() => petProfiles.id, { onDelete: 'cascade' }),
+    ownerId: text('owner_id').notNull(), // references auth user
+    title: text('title'),
+    viewerCount: integer('viewer_count').default(0).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('live_streams_pet_id_idx').on(table.petId),
+    index('live_streams_owner_id_idx').on(table.ownerId),
+    index('live_streams_is_active_idx').on(table.isActive),
+  ]
+);
+
 // Relations
 export const petProfilesRelations = relations(petProfiles, ({ many }) => ({
   swipes: many(swipes),
+  liveStreams: many(liveStreams),
 }));
 
 export const swipesRelations = relations(swipes, ({ one }) => ({
@@ -127,6 +155,13 @@ export const matchesRelations = relations(matches, ({ one }) => ({
   }),
   pet2: one(petProfiles, {
     fields: [matches.pet2Id],
+    references: [petProfiles.id],
+  }),
+}));
+
+export const liveStreamsRelations = relations(liveStreams, ({ one }) => ({
+  pet: one(petProfiles, {
+    fields: [liveStreams.petId],
     references: [petProfiles.id],
   }),
 }));

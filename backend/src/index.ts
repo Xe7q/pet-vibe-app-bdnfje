@@ -6,6 +6,8 @@ import { registerSwipeRoutes } from './routes/swipes.js';
 import { registerMatchRoutes } from './routes/matches.js';
 import { registerGiftRoutes } from './routes/gifts.js';
 import { registerUploadRoutes } from './routes/upload.js';
+import { registerFeaturedRoutes } from './routes/featured.js';
+import { registerLiveRoutes } from './routes/live.js';
 
 // Combine schemas
 const schema = { ...appSchema, ...authSchema };
@@ -29,6 +31,8 @@ registerSwipeRoutes(app);
 registerMatchRoutes(app);
 registerGiftRoutes(app);
 registerUploadRoutes(app);
+registerFeaturedRoutes(app);
+registerLiveRoutes(app);
 
 await app.run();
 app.logger.info('Application running');
