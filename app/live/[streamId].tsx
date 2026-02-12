@@ -12,10 +12,12 @@ import {
   Modal,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,6 +32,7 @@ interface LiveStream {
     name: string;
     photoUrl: string;
   };
+  ownerId: string;
   title: string;
   viewerCount: number;
   startedAt: string;
@@ -60,8 +63,13 @@ export default function LiveStreamScreen() {
   const [balance, setBalance] = useState(0);
   const [sendingGift, setSendingGift] = useState(false);
   const [endingStream, setEndingStream] = useState(false);
+  const [cameraType, setCameraType] = useState<CameraType>('back');
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [showEndConfirmModal, setShowEndConfirmModal] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
+  const cameraRef = useRef<CameraView>(null);
 
   const loadStreamData = useCallback(async () => {
     try {
@@ -69,12 +77,18 @@ export default function LiveStreamScreen() {
       const data = await apiGet(`/api/live/${streamId}`);
       setStream(data);
       console.log('[LiveStream] Stream loaded:', data);
+      
+      // If user is the owner, activate camera
+      if (user?.id === data.ownerId) {
+        console.log('[LiveStream] User is stream owner, activating camera');
+        setIsCameraActive(true);
+      }
     } catch (error) {
       console.error('[LiveStream] Failed to load stream:', error);
     } finally {
       setLoading(false);
     }
-  }, [streamId]);
+  }, [streamId, user?.id]);
 
   const joinStream = useCallback(async () => {
     try {
@@ -138,7 +152,7 @@ export default function LiveStreamScreen() {
     if (!stream || !user) return;
     
     if (balance < cost) {
-      alert('Insufficient Kibble balance!');
+      Alert.alert('Insufficient Balance', 'You do not have enough Kibble to send this gift.');
       return;
     }
 
@@ -156,13 +170,13 @@ export default function LiveStreamScreen() {
       // Update balance
       setBalance(prev => prev - cost);
       
-      // Show confetti animation (simplified)
-      alert(`🎉 Sent ${giftType}! 🎉`);
+      // Show success message
+      Alert.alert('Gift Sent!', `🎉 You sent a ${giftType}! 🎉`);
       
       setShowGiftModal(false);
     } catch (error) {
       console.error('[LiveStream] Failed to send gift:', error);
-      alert('Failed to send gift. Please try again.');
+      Alert.alert('Error', 'Failed to send gift. Please try again.');
     } finally {
       setSendingGift(false);
     }
@@ -188,20 +202,44 @@ export default function LiveStreamScreen() {
     }, 100);
   };
 
+  const handleEndStreamConfirm = () => {
+    setShowEndConfirmModal(true);
+  };
+
   const handleEndStream = async () => {
     if (!stream) return;
     
+    setShowEndConfirmModal(false);
     setEndingStream(true);
     try {
       console.log('[LiveStream] Ending stream');
       await authenticatedPost(`/api/live/end/${streamId}`, {});
       
-      alert('Stream ended successfully!');
+      Alert.alert('Stream Ended', 'Your live stream has ended successfully!');
       router.back();
     } catch (error) {
       console.error('[LiveStream] Failed to end stream:', error);
-      alert('Failed to end stream. Please try again.');
+      Alert.alert('Error', 'Failed to end stream. Please try again.');
       setEndingStream(false);
+    }
+  };
+
+  const toggleCameraType = () => {
+    setCameraType(current => (current === 'back' ? 'front' : 'back'));
+  };
+
+  const requestCameraPermission = async () => {
+    if (!permission) return;
+    
+    if (!permission.granted) {
+      const result = await requestPermission();
+      if (result.granted) {
+        setIsCameraActive(true);
+      } else {
+        Alert.alert('Camera Permission', 'Camera permission is required to go live.');
+      }
+    } else {
+      setIsCameraActive(true);
     }
   };
 
@@ -224,6 +262,7 @@ export default function LiveStreamScreen() {
     );
   }
 
+  const isOwner = user?.id === stream.ownerId;
   const viewerCountText = stream.viewerCount.toString();
   const petNameText = stream.pet.name;
   const streamTitleText = stream.title;
@@ -236,12 +275,20 @@ export default function LiveStreamScreen() {
         }}
       />
       <View style={styles.container}>
-        {/* Video Container (Mock) */}
-        <Image
-          source={{ uri: stream.pet.photoUrl }}
-          style={styles.videoContainer}
-          resizeMode="cover"
-        />
+        {/* Video/Camera Container */}
+        {isOwner && isCameraActive && permission?.granted ? (
+          <CameraView
+            ref={cameraRef}
+            style={styles.videoContainer}
+            facing={cameraType}
+          />
+        ) : (
+          <Image
+            source={{ uri: stream.pet.photoUrl }}
+            style={styles.videoContainer}
+            resizeMode="cover"
+          />
+        )}
         
         {/* Overlay Gradient */}
         <LinearGradient
@@ -275,19 +322,47 @@ export default function LiveStreamScreen() {
             </View>
           </View>
 
-          {/* End Stream Button (only for stream owner) */}
-          {user?.id === stream.pet.id && (
-            <TouchableOpacity
-              onPress={handleEndStream}
-              style={styles.endStreamButton}
-              disabled={endingStream}
-            >
-              {endingStream ? (
-                <ActivityIndicator size="small" color="#fff" />
+          {/* Camera Controls (only for stream owner) */}
+          {isOwner && (
+            <View style={styles.cameraControls}>
+              {!isCameraActive ? (
+                <TouchableOpacity
+                  onPress={requestCameraPermission}
+                  style={styles.cameraButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="video.fill"
+                    android_material_icon_name="videocam"
+                    size={24}
+                    color="#fff"
+                  />
+                </TouchableOpacity>
               ) : (
-                <Text style={styles.endStreamText}>End</Text>
+                <TouchableOpacity
+                  onPress={toggleCameraType}
+                  style={styles.cameraButton}
+                >
+                  <IconSymbol
+                    ios_icon_name="arrow.triangle.2.circlepath.camera"
+                    android_material_icon_name="flip-camera-android"
+                    size={24}
+                    color="#fff"
+                  />
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+              
+              <TouchableOpacity
+                onPress={handleEndStreamConfirm}
+                style={styles.endStreamButton}
+                disabled={endingStream}
+              >
+                {endingStream ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.endStreamText}>End</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           )}
         </SafeAreaView>
 
@@ -405,6 +480,37 @@ export default function LiveStreamScreen() {
             </View>
           </View>
         </Modal>
+
+        {/* End Stream Confirmation Modal */}
+        <Modal
+          visible={showEndConfirmModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowEndConfirmModal(false)}
+        >
+          <View style={styles.confirmModalOverlay}>
+            <View style={styles.confirmModal}>
+              <Text style={styles.confirmTitle}>End Live Stream?</Text>
+              <Text style={styles.confirmMessage}>
+                Are you sure you want to end this live stream? This action cannot be undone.
+              </Text>
+              <View style={styles.confirmButtons}>
+                <TouchableOpacity
+                  onPress={() => setShowEndConfirmModal(false)}
+                  style={[styles.confirmButton, styles.cancelButton]}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleEndStream}
+                  style={[styles.confirmButton, styles.endButton]}
+                >
+                  <Text style={styles.endButtonText}>End Stream</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </>
   );
@@ -498,6 +604,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  cameraControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cameraButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   streamInfo: {
     position: 'absolute',
@@ -677,5 +796,59 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmModal: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  confirmMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cancelButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  endButton: {
+    backgroundColor: '#EF4444',
+  },
+  endButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
