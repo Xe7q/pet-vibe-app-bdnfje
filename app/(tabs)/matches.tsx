@@ -30,6 +30,7 @@ interface Match {
     photoUrl: string;
   };
   createdAt: string;
+  unreadCount?: number;
 }
 
 export default function MatchesScreen() {
@@ -41,6 +42,12 @@ export default function MatchesScreen() {
   useEffect(() => {
     console.log('MatchesScreen: Component mounted');
     loadMatches();
+
+    const interval = setInterval(() => {
+      loadMatches();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const loadMatches = async () => {
@@ -67,6 +74,7 @@ export default function MatchesScreen() {
             photoUrl: 'https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=400',
           },
           createdAt: new Date().toISOString(),
+          unreadCount: 2,
         },
         {
           id: '2',
@@ -82,6 +90,7 @@ export default function MatchesScreen() {
             photoUrl: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=400',
           },
           createdAt: new Date(Date.now() - 86400000).toISOString(),
+          unreadCount: 0,
         },
         {
           id: '3',
@@ -97,6 +106,7 @@ export default function MatchesScreen() {
             photoUrl: 'https://images.unsplash.com/photo-1612536981610-2e8a36a0e5f1?w=400',
           },
           createdAt: new Date(Date.now() - 172800000).toISOString(),
+          unreadCount: 5,
         },
       ];
       setMatches(mockMatches);
@@ -147,6 +157,8 @@ export default function MatchesScreen() {
   const renderMatch = ({ item }: { item: Match }) => {
     const matchTime = formatMatchTime(item.createdAt);
     const petAge = item.otherPet.age.toString();
+    const hasUnread = (item.unreadCount || 0) > 0;
+    const unreadText = item.unreadCount?.toString() || '0';
 
     return (
       <View style={styles.matchCard}>
@@ -159,6 +171,11 @@ export default function MatchesScreen() {
             color="#FFFFFF"
           />
         </View>
+        {hasUnread && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadText}>{unreadText}</Text>
+          </View>
+        )}
         <View style={styles.matchInfo}>
           <Text style={styles.matchName}>{item.otherPet.name}</Text>
           <View style={styles.matchDetails}>
@@ -290,6 +307,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  unreadText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   matchInfo: {
     padding: 12,

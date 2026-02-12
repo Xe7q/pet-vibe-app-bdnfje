@@ -1,3 +1,4 @@
+
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
@@ -104,11 +105,13 @@ export const apiGet = async <T = any>(endpoint: string): Promise<T> => {
  */
 export const apiPost = async <T = any>(
   endpoint: string,
-  data: any
+  data: any,
+  options?: RequestInit
 ): Promise<T> => {
   return apiCall<T>(endpoint, {
     method: "POST",
     body: JSON.stringify(data),
+    ...options,
   });
 };
 
@@ -189,11 +192,13 @@ export const authenticatedGet = async <T = any>(endpoint: string): Promise<T> =>
  */
 export const authenticatedPost = async <T = any>(
   endpoint: string,
-  data: any
+  data: any,
+  options?: RequestInit
 ): Promise<T> => {
   return authenticatedApiCall<T>(endpoint, {
     method: "POST",
     body: JSON.stringify(data),
+    ...options,
   });
 };
 

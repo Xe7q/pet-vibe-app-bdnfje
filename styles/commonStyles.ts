@@ -1,117 +1,64 @@
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
-
-// PawPaw Theme Colors - Updated with Light Brown Primary
 export const colors = {
-  // Brand Colors - Light Brown Theme
-  primary: '#C4A57B', // Light Brown
+  primary: '#C4A57B',
   primaryDark: '#A68A5F',
-  
-  // Backgrounds
   background: '#FFFFFF',
-  backgroundSecondary: '#F8F9FA',
-  card: '#FFFFFF',
-  
-  // Text
-  text: '#1A1A1A',
-  textSecondary: '#6B7280',
-  textLight: '#9CA3AF',
-  
-  // UI Elements
-  border: '#E5E7EB',
-  success: '#10B981',
-  error: '#EF4444',
-  warning: '#F59E0B',
-  
-  // Swipe Actions
-  like: '#10B981',
-  nope: '#EF4444',
-  
-  // Shadows
-  shadow: 'rgba(0, 0, 0, 0.1)',
+  card: '#F8F8F8',
+  text: '#1C1C1E',
+  textSecondary: '#8E8E93',
+  textLight: '#C7C7CC',
+  border: '#E5E5EA',
+  shadow: '#000000',
+  error: '#FF3B30',
+  success: '#34C759',
+  warning: '#FF9500',
 };
 
-export const buttonStyles = StyleSheet.create({
-  instructionsButton: {
-    backgroundColor: colors.primary,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  backButton: {
-    backgroundColor: colors.backgroundSecondary,
-    alignSelf: 'center',
-    width: '100%',
-  },
-});
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+};
 
-export const commonStyles = StyleSheet.create({
-  wrapper: {
-    backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
+export const borderRadius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  round: 9999,
+};
+
+export const typography = {
+  h1: {
+    fontSize: 32,
+    fontWeight: 'bold' as const,
+    lineHeight: 40,
   },
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    maxWidth: 800,
-    width: '100%',
-  },
-  title: {
+  h2: {
     fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-    color: colors.text,
-    marginBottom: 10
+    fontWeight: 'bold' as const,
+    lineHeight: 32,
   },
-  text: {
+  h3: {
+    fontSize: 20,
+    fontWeight: '600' as const,
+    lineHeight: 28,
+  },
+  body: {
     fontSize: 16,
-    fontWeight: '500',
-    color: colors.text,
-    marginBottom: 8,
+    fontWeight: 'normal' as const,
     lineHeight: 24,
-    textAlign: 'center',
   },
-  section: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+  caption: {
+    fontSize: 14,
+    fontWeight: 'normal' as const,
+    lineHeight: 20,
   },
-  buttonContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+  small: {
+    fontSize: 12,
+    fontWeight: 'normal' as const,
+    lineHeight: 16,
   },
-  card: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    marginVertical: 8,
-    width: '100%',
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  icon: {
-    width: 60,
-    height: 60,
-    tintColor: colors.primary,
-  },
-});
+};
