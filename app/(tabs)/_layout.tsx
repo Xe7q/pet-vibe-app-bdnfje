@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Stack } from 'expo-router';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
@@ -18,6 +19,13 @@ export default function TabLayout() {
       label: 'Leaderboard',
     },
     {
+      name: 'go-live',
+      route: '/live/start',
+      icon: 'videocam',
+      label: 'Go Live',
+      isSpecial: true,
+    },
+    {
       name: 'matches',
       route: '/(tabs)/matches',
       icon: 'favorite',
@@ -31,13 +39,12 @@ export default function TabLayout() {
     },
   ];
 
-  // For Android and Web, use Stack navigation with custom floating tab bar
   return (
     <>
       <Stack
         screenOptions={{
           headerShown: false,
-          animation: 'none', // Remove fade animation to prevent black screen flash
+          animation: 'none',
         }}
       >
         <Stack.Screen key="home" name="(home)" />
