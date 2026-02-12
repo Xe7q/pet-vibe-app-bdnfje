@@ -307,7 +307,7 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Action Buttons */}
+      {/* Action Buttons - Positioned above the FloatingTabBar */}
       {currentPet && (
         <View style={styles.actions}>
           <TouchableOpacity
@@ -330,7 +330,7 @@ export default function HomeScreen() {
               ios_icon_name="heart.fill"
               android_material_icon_name="favorite"
               size={32}
-              color="#FF6B6B"
+              color="#4CAF50"
             />
           </TouchableOpacity>
         </View>
@@ -406,6 +406,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
+    marginBottom: 120, // Space for action buttons + tab bar
   },
   card: {
     width: CARD_WIDTH,
@@ -475,11 +476,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   actions: {
+    position: 'absolute',
+    bottom: 110, // Positioned above the FloatingTabBar (70px height + 20px margin + 20px spacing)
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 20,
     gap: 40,
+    paddingHorizontal: 20,
   },
   actionButton: {
     width: 64,
