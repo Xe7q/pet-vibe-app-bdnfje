@@ -1,10 +1,11 @@
+
 import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
 
-// PawPaw Theme Colors
+// PawPaw Theme Colors - Updated with Light Brown Primary
 export const colors = {
-  // Brand Colors
-  primary: '#FF6B6B', // Sunset Orange
-  primaryDark: '#E85555',
+  // Brand Colors - Light Brown Theme
+  primary: '#C4A57B', // Light Brown
+  primaryDark: '#A68A5F',
   
   // Backgrounds
   background: '#FFFFFF',
