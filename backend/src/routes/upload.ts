@@ -12,31 +12,50 @@ export function registerUploadRoutes(app: App) {
       reply: FastifyReply
     ): Promise<any | void> => {
       app.logger.info(
-        { method: request.method, path: request.url },
+        {
+          method: request.method,
+          path: request.url,
+          contentType: request.headers['content-type'],
+          isMultipart: request.isMultipart(),
+        },
         'Pet photo upload started'
       );
       const session = await requireAuth(request, reply);
       if (!session) return;
 
+      app.logger.info(
+        { userId: session.user.id },
+        'User authenticated for pet photo upload'
+      );
+
       try {
-        // Get file with size limit (10MB)
+        // Get file from 'image' field with size limit (10MB)
         const data = await request.file({ limits: { fileSize: 10 * 1024 * 1024 } });
 
         if (!data) {
           app.logger.warn(
             { userId: session.user.id },
-            'No file provided in upload'
+            'No image file provided in upload'
           );
-          return reply.status(400).send({ error: 'No file provided' });
+          return reply.status(400).send({ error: 'No image file provided' });
         }
+
+        app.logger.info(
+          { userId: session.user.id, filename: data.filename, encoding: data.encoding, mimetype: data.mimetype },
+          'Received multipart file'
+        );
 
         let buffer: Buffer;
         try {
           buffer = await data.toBuffer();
+          app.logger.info(
+            { userId: session.user.id, bufferSize: buffer.length, filename: data.filename },
+            'File converted to buffer'
+          );
         } catch (err) {
           app.logger.error(
-            { err, userId: session.user.id },
-            'File too large'
+            { err, userId: session.user.id, filename: data.filename },
+            'Failed to convert file to buffer (may be too large)'
           );
           return reply.status(413).send({ error: 'File too large' });
         }
