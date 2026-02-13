@@ -1,7 +1,5 @@
 
-import { apiGet, authenticatedPost } from '@/utils/api';
-import { Stack, useRouter, Redirect } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,11 +11,13 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
-import { IconSymbol } from '@/components/IconSymbol';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack, useRouter, Redirect } from 'expo-router';
+import { apiGet, authenticatedPost } from '@/utils/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect, useRef } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 interface PetProfile {
   id: string;
@@ -42,12 +42,12 @@ const SWIPE_THRESHOLD = 120;
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, backendError, backendErrorMessage } = useAuth();
   const [pets, setPets] = useState<PetProfile[]>([]);
   const [stories, setStories] = useState<StoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [backendError, setBackendError] = useState(false);
+  const [localBackendError, setLocalBackendError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const position = useRef(new Animated.ValueXY()).current;
@@ -85,12 +85,12 @@ export default function HomeScreen() {
       const response = await apiGet('/api/pets');
       console.log('[Home iOS] Pets loaded:', response);
       setPets(response || []);
-      setBackendError(false);
+      setLocalBackendError(false);
     } catch (error: any) {
       console.error('[Home iOS] Failed to load pets:', error);
       if (error?.error === 'merged' || error?.message?.includes('merged')) {
         console.log('[Home iOS] Backend is merged/inactive');
-        setBackendError(true);
+        setLocalBackendError(true);
         setErrorMessage('Backend is currently unavailable. The sandbox has been merged and needs to be recreated.');
       } else {
         setErrorMessage('Failed to load pets. Please try again.');
@@ -135,10 +135,16 @@ export default function HomeScreen() {
 
     try {
       console.log(`[Home iOS] Recording ${swipeType} swipe for pet:`, currentPet.id);
-      await authenticatedPost('/api/swipes', {
+      const response = await authenticatedPost('/api/swipes', {
         likedPetId: currentPet.id,
         swipeType,
       });
+      console.log('[Home iOS] Swipe response:', response);
+
+      if (response.match) {
+        console.log('[Home iOS] It\'s a match!');
+        // Show match notification
+      }
     } catch (error) {
       console.error('[Home iOS] Failed to record swipe:', error);
     }
@@ -165,14 +171,16 @@ export default function HomeScreen() {
     );
   }
 
-  if (backendError) {
+  // Show backend error if detected (either from AuthContext or local API calls)
+  if (backendError || localBackendError) {
+    const displayMessage = backendErrorMessage || errorMessage;
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
           <Text style={styles.errorTitle}>Backend Unavailable</Text>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+          <Text style={styles.errorText}>{displayMessage}</Text>
           <TouchableOpacity
             style={styles.errorButton}
             onPress={() => router.push('/backend-error')}
@@ -204,6 +212,7 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
+      {/* Stories */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -234,6 +243,7 @@ export default function HomeScreen() {
         })}
       </ScrollView>
 
+      {/* Swipe Cards */}
       <View style={styles.cardsContainer}>
         {currentIndex < pets.length ? (
           <Animated.View
@@ -280,6 +290,7 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {/* Action Buttons - iOS specific positioning */}
       <View style={styles.actionsContainer}>
         <TouchableOpacity
           style={[styles.actionButton, styles.passButton]}
@@ -466,6 +477,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 20,
+    paddingBottom: 100,
     gap: 40,
   },
   actionButton: {

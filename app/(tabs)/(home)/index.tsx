@@ -44,14 +44,14 @@ const SWIPE_THRESHOLD = 120;
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, backendError, backendErrorMessage } = useAuth();
   const [pets, setPets] = useState<PetProfile[]>([]);
   const [stories, setStories] = useState<StoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [backendError, setBackendError] = useState(false);
+  const [localBackendError, setLocalBackendError] = useState(false);
 
   const position = useRef(new Animated.ValueXY()).current;
 
@@ -88,12 +88,12 @@ export default function HomeScreen() {
       const response = await apiGet('/api/pets');
       console.log('[Home] Pets loaded:', response);
       setPets(response || []);
-      setBackendError(false);
+      setLocalBackendError(false);
     } catch (error: any) {
       console.error('[Home] Failed to load pets:', error);
       if (error?.error === 'merged' || error?.message?.includes('merged')) {
         console.log('[Home] Backend is merged/inactive');
-        setBackendError(true);
+        setLocalBackendError(true);
         setErrorMessage('Backend is currently unavailable. The sandbox has been merged and needs to be recreated.');
       } else {
         setErrorMessage('Failed to load pets. Please try again.');
@@ -177,14 +177,16 @@ export default function HomeScreen() {
     );
   }
 
-  if (backendError) {
+  // Show backend error if detected (either from AuthContext or local API calls)
+  if (backendError || localBackendError) {
+    const displayMessage = backendErrorMessage || errorMessage;
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
           <Text style={styles.errorTitle}>Backend Unavailable</Text>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+          <Text style={styles.errorText}>{displayMessage}</Text>
           <TouchableOpacity
             style={styles.errorButton}
             onPress={() => router.push('/backend-error')}

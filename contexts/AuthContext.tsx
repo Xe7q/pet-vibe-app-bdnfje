@@ -14,6 +14,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  backendError: boolean;
+  backendErrorMessage: string;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, name?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -71,6 +73,8 @@ function openOAuthPopup(provider: string): Promise<string> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [backendError, setBackendError] = useState(false);
+  const [backendErrorMessage, setBackendErrorMessage] = useState("");
 
   useEffect(() => {
     console.log("[AuthContext] Initializing, fetching user session...");
@@ -103,9 +107,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const session = await authClient.getSession();
       console.log("[AuthContext] Session response:", session);
       
+      // Check for backend errors (merged branch, inactive sandbox, etc.)
+      if (session?.error) {
+        const errorMsg = session.error.message || session.error.error || "";
+        const isMergedError = errorMsg.includes("merged") || errorMsg.includes("no longer has an active sandbox");
+        
+        if (isMergedError) {
+          console.error("[AuthContext] Backend is merged/inactive:", errorMsg);
+          setBackendError(true);
+          setBackendErrorMessage("The backend sandbox has been merged and is no longer active. Please contact support to recreate the backend.");
+          setUser(null);
+          await clearAuthTokens();
+          setLoading(false);
+          return;
+        }
+      }
+      
       if (session?.data?.user) {
         console.log("[AuthContext] User authenticated:", session.data.user.email);
         setUser(session.data.user as User);
+        setBackendError(false);
+        setBackendErrorMessage("");
         // Sync token to SecureStore for utils/api.ts
         if (session.data.session?.token) {
           console.log("[AuthContext] Syncing bearer token to storage");
@@ -114,10 +136,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         console.log("[AuthContext] No active session found");
         setUser(null);
+        setBackendError(false);
+        setBackendErrorMessage("");
         await clearAuthTokens();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("[AuthContext] Failed to fetch user:", error);
+      
+      // Check if the error is a backend connectivity issue
+      const errorMsg = error?.message || error?.error || "";
+      const isMergedError = errorMsg.includes("merged") || errorMsg.includes("no longer has an active sandbox");
+      
+      if (isMergedError) {
+        console.error("[AuthContext] Backend is merged/inactive (catch block)");
+        setBackendError(true);
+        setBackendErrorMessage("The backend sandbox has been merged and is no longer active. Please contact support to recreate the backend.");
+      } else {
+        setBackendError(false);
+        setBackendErrorMessage("");
+      }
+      
       setUser(null);
     } finally {
       setLoading(false);
@@ -195,6 +233,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
        // Always clear local state
        console.log("[AuthContext] Clearing local auth state");
        setUser(null);
+       setBackendError(false);
+       setBackendErrorMessage("");
        await clearAuthTokens();
     }
   };
@@ -204,6 +244,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         loading,
+        backendError,
+        backendErrorMessage,
         signInWithEmail,
         signUpWithEmail,
         signInWithGoogle,

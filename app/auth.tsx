@@ -19,8 +19,16 @@ type Mode = "signin" | "signup";
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
-    useAuth();
+  const { 
+    signInWithEmail, 
+    signUpWithEmail, 
+    signInWithGoogle, 
+    signInWithApple, 
+    signInWithGitHub, 
+    loading: authLoading,
+    backendError,
+    backendErrorMessage
+  } = useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -40,6 +48,27 @@ export default function AuthScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
+  // Show backend error screen if backend is down
+  if (backendError) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorIcon}>⚠️</Text>
+        <Text style={styles.errorTitle}>Backend Unavailable</Text>
+        <Text style={styles.errorText}>{backendErrorMessage}</Text>
+        <Text style={styles.errorSubtext}>
+          The backend sandbox has been merged and needs to be recreated by the Natively team.
+        </Text>
+        <TouchableOpacity
+          style={styles.errorButton}
+          onPress={() => router.push('/backend-error')}
+        >
+          <Text style={styles.errorButtonText}>Learn More</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -250,6 +279,54 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#fff",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#666",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 24,
+  },
+  errorIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#000",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 12,
+    lineHeight: 24,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: "#999",
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  errorButton: {
+    backgroundColor: "#007AFF",
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
   scrollContent: {
     flexGrow: 1,
